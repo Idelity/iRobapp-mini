@@ -1,7 +1,7 @@
 # =========================================================
 # File: 001_Head_Face_Connector.py
-# Description: iRobapp-mini用 丸型液晶(GC9A01)はめ込み頭部マウント
-# Spec: 液晶外径38mm対応 / 底面SG90サーボ(M2穴)ダイレクトマウント仕様
+# Description: iRobapp-mini用 丸型液晶(GC9A01)はめ込み頭部マウント（配線スリット対応版）
+# Spec: 外径44mm(R22) / 液晶ポケット38mm(R19) / 中央R17穴・底厚3mm・配線穴仕様
 # =========================================================
 
 import FreeCAD as App
@@ -15,58 +15,58 @@ if App.getDocument(doc_name):
 doc = App.newDocument(doc_name)
 
 # ---------------------------------------------------------
-# パラメータ設定（mm単位）
+# パラメータ設定（ご指定の極薄・軽量化寸法）
 # ---------------------------------------------------------
-# GC9A01 丸型液晶の標準的な寸法（余裕を持たせたクリアランス込み）
-lcd_r       = 19.0    # 液晶基板の半径（外径38mm）
-lcd_depth   = 4.0     # 液晶基板とはめ込みに必要な奥行き深さ
-wall_t      = 3.0     # 外壁の肉厚 3mm
+head_r     = 22.0  # ① 頭部の外径半径：22mm（直径44mm）
+lcd_r      = 19.0  # ② 液晶ポケットの半径：19mm（直径38mm）
+lcd_depth  = 4.0   # 液晶が収まる深さ：4mm
+head_d     = 20.0  # 頭部全体の奥行き：20mm
 
-# SG90サーボ固定用（首のチルト/ピッチ関節との接続用）
-servo_screw_pitch = 27.5  # 耳のネジ穴ピッチ
-screw_r_m2        = 1.1   # M2ネジ用貫通穴（半径1.1mm）
+# ③ ご指定の中央肉抜き丸穴の半径：17.0mm（直径34.0mm）
+inner_wire_r = 17.0 
 
-# 頭部全体のサイズ
-head_r = lcd_r + wall_t   # 頭部の外径半径（22mm、直径44mmのコンパクトサイズ）
-head_d = 20.0             # 頭部パーツ自体の奥行き（液晶と背面の配線スペースを確保）
+# ④ ご指定の底面に残す肉厚（床の厚み）：3.0mm
+floor_t = 3.0
 
-# ---------------------------------------------------------
-# 1. 頭部ベース形状の作成（コロンとした円柱・コップ状のベース）
-# ---------------------------------------------------------
-# メインの頭部ソリッド
-head_base = Part.makeCylinder(head_r, head_d)
-
-# 底面（サーボと繋ぐ側）にネジ留め用のフラットな「耳」を拡張
-ear_block = Part.makeBox(8.0, 36.0, wall_t)
-ear_block.translate(App.Vector(-4.0, -18.0, 0)) # 中心を合わせる
-
-main_body = head_base.fuse(ear_block)
+# 首（002）と結合するためのM2ネジ穴（2箇所）
+screw_r_m2       = 1.1   # M2ネジ用穴（半径1.1mm、直径2.2mm）
+head_screw_pitch = 27.5  # Y軸方向のネジピッチ
 
 # ---------------------------------------------------------
-# 2. くり抜き処理（液晶ポケット ＋ 首サーボ接続穴）
+# 1. 頭部ベース形状の作成（外径44mmのクリーンな円柱ソリッド）
+# ---------------------------------------------------------
+main_body = Part.makeCylinder(head_r, head_d)
+
+# ---------------------------------------------------------
+# 2. 同軸の「丸」だけでくり抜くステップ処理 ＋ 配線穴の追加
 # ---------------------------------------------------------
 cut_shapes = []
 
-# --- (A) 前面からの液晶はめ込みポケット ---
-# 液晶がすっぽり収まるように前面（Z軸の上側）から円柱でくり抜く
+# --- (A) 前面からの液晶はめ込みポケット（半径19mm、深さ4mm） ---
 lcd_pocket = Part.makeCylinder(lcd_r, lcd_depth + 1.0)
-lcd_pocket.translate(App.Vector(0, 0, head_d - lcd_depth))
+lcd_pocket.translate(App.Vector(0.0, 0.0, head_d - lcd_depth))
 cut_shapes.append(lcd_pocket)
 
-# 配線（ジャンパ線やFPCケーブル）を後ろに逃がすための中央の四角い貫通穴
-wire_hole = Part.makeBox(16.0, 16.0, head_d + 4.0)
-wire_hole.translate(App.Vector(-8.0, -8.0, -2.0))
-cut_shapes.append(wire_hole)
+# --- (B) 中央の大きな肉抜き丸穴（底面から3.0mm残し） ---
+center_void = Part.makeCylinder(inner_wire_r, head_d)
+center_void.translate(App.Vector(0.0, 0.0, floor_t))
+cut_shapes.append(center_void)
 
-# --- (B) 底面の首サーボ（SG90）結合用M2ネジ穴（2箇所） ---
-for dy in [-servo_screw_pitch / 2.0, servo_screw_pitch / 2.0]:
+# --- (C) 首（002）の天面とドッキングするためのM2ネジ穴（2箇所） ---
+for dy in [-head_screw_pitch / 2.0, head_screw_pitch / 2.0]:
     s_hole = Part.makeCylinder(
         screw_r_m2,
-        wall_t + 4.0,
-        App.Vector(0, dy, -2.0),
-        App.Vector(0, 0, 1) # Z軸方向に垂直に貫通
+        floor_t + 2.0,
+        App.Vector(0.0, dy, -1.0),
+        App.Vector(0, 0, 1)
     )
     cut_shapes.append(s_hole)
+
+# --- (D) 【追加】液晶のケーブルを下（002側）へ逃がすための配線スリット穴 ---
+# 002の天面（幅8mm）をすり抜けて、底面の肉厚（3mm）を一気に貫通する長方形の穴を中央付近に配置
+wire_slit = Part.makeBox(8.0, 4.0, floor_t + 2.0)
+wire_slit.translate(App.Vector(-4.0, -2.0, -1.0))
+cut_shapes.append(wire_slit)
 
 # ---------------------------------------------------------
 # 3. くり抜き実行とドキュメント出力
@@ -75,6 +75,7 @@ cutter = cut_shapes
 for s in cut_shapes[1:]:
     cutter = cutter.fuse(s)
 
+# すべての加工穴をまとめて一発引き算
 final_shape = main_body.cut(cutter)
 
 head_part = doc.addObject("Part::Feature", "Head_Face_Connector")
@@ -85,4 +86,4 @@ doc.recompute()
 if hasattr(App, "Gui") and App.Gui.ActiveDocument and App.Gui.ActiveDocument.ActiveView:
     App.Gui.ActiveDocument.ActiveView.fitAll()
 
-print("001_Head_Face_Connector.py: GC9A01液晶対応の頭部ベースが正常に生成されました！")
+print("001_Head_Face_Connector.py: 配線逃げ窓を追加した究極の頭部ベースが完成しました！")
