@@ -1,7 +1,7 @@
 # =========================================================
 # File: 003_Body_Base_Case.py
 # Description: iRobapp-mini用 デスクトップ土台（メカ・電子部品内蔵ボディ）
-# Spec: 首サーボ適合 / XIAO給電用USB穴 / 背面スイッチ・ヒューズ穴
+# Spec: 首・尻尾サーボ適合 / XIAO給電用USB穴 / 背面スイッチ・ヒューズ穴 / 【修正】完全に独立した右側配線大穴仕様
 # =========================================================
 
 import FreeCAD as App
@@ -36,30 +36,33 @@ fuse_r   = 6.0         # パネルマウント型ヒューズホルダーの穴�
 usb_w = 11.0           # USB-Cケーブルのプラプラグが干渉しない幅
 usb_h = 6.5            # USB-Cプラグの厚み＋余裕
 
+# SG90尻尾サーボ用の標準寸法
+tail_servo_w = 23.0    # 尻尾サーボ本体の横幅
+tail_servo_h = 12.4    # 尻尾サーボ本体の縦幅
+tail_servo_pitch = 27.5 # ネジのピッチ
+
+# 天面の配線専用大穴の半径：5.0mm（直径10.0mm）
+wire_hole_r = 5.0
+
 # ---------------------------------------------------------
 # 1. ボディベース形状の作成（スマートなテーパー付き円柱）
 # ---------------------------------------------------------
-# 机の上で安定し、上に向かって少し絞られる綺麗な円錐台（コーン形状）を作ります
-# 下面半径 35mm、上面半径 28mm、高さ 40mm
 body_solid = Part.makeCone(body_r, body_r - 7.0, body_h)
 
 # ---------------------------------------------------------
-# 2. くり抜き処理（内蔵スペース ＋ サーボ固定穴 ＋ スイッチ類 ＋ USB窓）
+# 2. くり抜き処理（内蔵スペース ＋ 各種加工窓 ＋ 独立した配線大穴）
 # ---------------------------------------------------------
 cut_shapes = []
 
 # --- (A) 内部の電子部品収納スペース（インナーポケット） ---
-# 肉厚3mmを残して、下側から中をまるごとくり抜きます
 inner_space = Part.makeCone(body_r - wall_t, body_r - 7.0 - wall_t, body_h - wall_t)
 cut_shapes.append(inner_space)
 
 # --- (B) 天面：首振り用SG90サーボを落とし込むスリットとネジ穴（Z軸貫通） ---
-# サーボ本体が通る長方形の穴
 servo_hole = Part.makeBox(13.4, 23.4, wall_t + 4.0)
 servo_hole.translate(App.Vector(-13.4 / 2.0, -23.4 / 2.0, body_h - wall_t - 2.0))
 cut_shapes.append(servo_hole)
 
-# サーボの耳を固定するM2ネジ穴（2箇所）
 for dy in [-head_screw_pitch / 2.0, head_screw_pitch / 2.0]:
     s_hole = Part.makeCylinder(
         screw_r_m2,
@@ -69,27 +72,49 @@ for dy in [-head_screw_pitch / 2.0, head_screw_pitch / 2.0]:
     )
     cut_shapes.append(s_hole)
 
-# --- (C) 背面：電源スイッチ穴（Y軸方向貫通の四角穴） ---
-# 土台の後ろ側（Y軸マイナス方向の壁）にスイッチを配置
+# --- (C) 【プラン①適用】天面：サーボ用四角穴から完全に「独立」させた配線大穴 ---
+# ご指示通りさらに右（X = 14.5mm）へ離したことで、サーボの四角穴（X最大6.7mm）のフチとぶつからず、
+# 1本の綺麗な真ん丸の貫通穴として独立して削り出されます。ネジ穴の保護も完璧です。
+top_wire_hole = Part.makeCylinder(
+    wire_hole_r,
+    55.0,
+    App.Vector(14.5, 9.0, 50.0),
+    App.Vector(0, 0, -1) # Z軸マイナス方向に垂直貫通
+)
+cut_shapes.append(top_wire_hole)
+
+# --- (D) 背面：電源スイッチ穴（Y軸方向貫通の四角穴） ---
 switch_hole = Part.makeBox(switch_w, wall_t + 10.0, switch_h)
-switch_hole.translate(App.Vector(-switch_w / 2.0, -body_r - 5.0, 8.0))
+switch_hole.translate(App.Vector(-switch_w / 2.0, -body_r - 5.0, 6.0))
 cut_shapes.append(switch_hole)
 
-# --- (D) 背面：安全のためのヒューズホルダー穴（Y軸方向貫通の丸穴） ---
-# スイッチの横（X軸プラス方向にずらした位置）に配置
+# --- (E) 背面：安全のためのヒューズホルダー穴（Y軸方向貫通の丸穴） ---
 fuse_hole = Part.makeCylinder(
     fuse_r,
     wall_t + 10.0,
-    App.Vector(18.0, -body_r - 5.0, 17.5),
-    App.Vector(0, 1, 0) # Y軸方向に貫通
+    App.Vector(18.0, -body_r - 5.0, 15.5),
+    App.Vector(0, 1, 0)
 )
 cut_shapes.append(fuse_hole)
 
-# --- (E) 背面/側面：XIAOマイコン用USB-Cアクセス窓（Y軸方向貫通の四角穴） ---
-# スイッチやヒューズの配線と干渉を避けるため、X軸マイナス方向（左後ろ側）の壁を貫通
+# --- (F) 背面/側面：XIAOマイコン用USB-Cアクセス窓 ---
 usb_hole = Part.makeBox(usb_w, wall_t + 10.0, usb_h)
 usb_hole.translate(App.Vector(-18.0, -body_r - 5.0, 10.0))
 cut_shapes.append(usb_hole)
+
+# --- (G) 背面：尻尾フリフリ用サーボを埋め込む窓 ＆ ネジ穴 ---
+tail_hole = Part.makeBox(tail_servo_w, 15.0, tail_servo_h)
+tail_hole.translate(App.Vector(-tail_servo_w / 2.0, -body_r - 5.0, 24.0))
+cut_shapes.append(tail_hole)
+
+for dx in [-tail_servo_pitch / 2.0, tail_servo_pitch / 2.0]:
+    t_screw = Part.makeCylinder(
+        screw_r_m2,
+        15.0,
+        App.Vector(dx, -body_r - 5.0, 30.2), 
+        App.Vector(0, 1, 0)
+    )
+    cut_shapes.append(t_screw)
 
 # ---------------------------------------------------------
 # 3. くり抜き実行とドキュメント出力
@@ -108,4 +133,4 @@ doc.recompute()
 if hasattr(App, "Gui") and App.Gui.ActiveDocument and App.Gui.ActiveDocument.ActiveView:
     App.Gui.ActiveDocument.ActiveView.fitAll()
 
-print("003_Body_Base_Case.py: USBポート窓を追加した最新の土台ベースが正常に生成されました！")
+print("003_Body_Base_Case.py: 丸穴を完全に独立させた、美しい最終デザインの土台が完成しました！")
