@@ -1,7 +1,7 @@
 # =========================================================
 # File: 002_Neck_Joint_Mount.py
 # Description: iRobapp-mini用 首の上下左右(パン・チルト)関節マウント
-# Spec: 001/003と完全同期 / 底面にSG90サーボホーンの埋込凹み＆ネジ穴を追加
+# Spec: 厚みすべて3mmのコの字型 / 天面2穴 / 底面サーボホーン結合（3穴仕様）
 # =========================================================
 
 import FreeCAD as App
@@ -15,90 +15,77 @@ if App.getDocument(doc_name):
 doc = App.newDocument(doc_name)
 
 # ---------------------------------------------------------
-# パラメータ設定（mm単位）
+# パラメータ設定（共通・規格寸法）
 # ---------------------------------------------------------
-screw_r_m2 = 1.1       # M2穴（半径1.1mm）
-wall_t     = 3.0       # 基本壁厚 3mm
+wall_t     = 3.0       # すべての板の厚み: 3mm
+plate_w    = 20.0      # すべての板の共通の幅: 20mm
+plate_l_long = 36.0    # 天面・底面プレートの長さ: 36mm
 
-# 頭部（001）側のネジピッチ
-head_screw_pitch = 27.5
+# 内側の空間高さ（全高33mm - 天面3mm - 底面3mm = 内寸27mm、これで縦壁が30mmになります）
+inner_h = 27.0
+total_h = inner_h + (wall_t * 2.0) # 全高33.0mm
 
-# SG90サーボホルダー用の標準寸法（チルトサーボ用）
-servo_w = 23.0         # サーボ本体の幅
-servo_h = 12.8         # サーボの厚み
+# 穴あけ用の規格パラメータ
+screw_r_m2       = 1.1   # M2ネジ用貫通穴（半径1.1mm、直径2.2mm）
+head_screw_pitch = 27.5  # 001番と結合するためのY軸方向のネジピッチ
 
-# SG90付属の一文字ホーン埋め込み用パラメータ（パンサーボとの結合用）
-horn_w      = 5.0      # 一文字ホーンの幅（クリアランス込み）
-horn_l      = 16.0     # 一文字ホーンの長さ（クリアランス込み）
-horn_depth  = 1.5      # ホーンを埋め込む深さ
-horn_screw_p = 11.0    # ホーン固定用ミニネジのピッチ（中心から左右5.5mm）
-horn_screw_r = 0.8     # サーボ付属ミニネジ用の下穴（半径0.8mm、直径1.6mm）
-
-# ---------------------------------------------------------
-# 1. 形状の作成（T字型の直角サーボマウント）
-# ---------------------------------------------------------
-# 頭部パーツとネジ留めするための「上部水平プレート」
-top_plate = Part.makeBox(8.0, 36.0, wall_t)
-top_plate.translate(App.Vector(-4.0, -18.0, 0))
-
-# 上下にうなずく（ピッチ用）サーボを固定する「垂直壁」
-vert_wall = Part.makeBox(wall_t, 36.0, 24.0)
-vert_wall.translate(App.Vector(-wall_t/2.0, -18.0, -24.0))
-
-# 左右に振り向く（ヨー用）サーボとドッキングするための「底部水平プレート」
-# ※ホーンを埋め込むため、厚みを 3.0mm から 4.5mm に少し厚くしました
-bottom_plate = Part.makeBox(20.0, 36.0, 4.5)
-bottom_plate.translate(App.Vector(-10.0, -18.0, -24.0))
-
-# ベース形状を統合
-main_body = top_plate.fuse(vert_wall).fuse(bottom_plate)
+# SG90付属の一文字ホーン埋め込み用パラメータ（底面用）
+horn_w       = 5.0       # 一文字ホーンの幅
+horn_l       = 16.0      # 一文字ホーンの長さ
+horn_depth   = 1.5       # ホーンを埋め込む深さ（底面3mmのうち1.5mmを削る）
+horn_screw_p = 11.0      # ホーン固定用ミニネジのピッチ（中心から左右5.5mm）
+horn_screw_r = 0.8       # サーボ付属ミニネジ用の下穴（半径0.8mm）
 
 # ---------------------------------------------------------
-# 2. くり抜き処理（各種ネジ穴 ＋ サーボポケット ＋ 底面ホーン用スリット）
+# 1. コの字型ベース形状の作成（一括切り出し）
 # ---------------------------------------------------------
+main_block = Part.makeBox(plate_w, plate_l_long, total_h)
+main_block.translate(App.Vector(-plate_w / 2.0, -plate_l_long / 2.0, 0.0))
+
 cut_shapes = []
 
-# --- (A) 頭部パーツ（001）と合体するためのM2ネジ穴（2箇所：Z軸方向） ---
+# コの字の内側の空洞を作るための「引き算用ボックス」
+inner_void = Part.makeBox(plate_w + 4.0, plate_l_long, inner_h)
+inner_void.translate(App.Vector(-(plate_w + 4.0) / 2.0, -plate_l_long / 2.0 + wall_t, wall_t))
+cut_shapes.append(inner_void)
+
+# ---------------------------------------------------------
+# 2. 追加のくり抜き処理（天面ネジ穴 ＆ 底面サーボホーン3穴）
+# ---------------------------------------------------------
+# --- (A) 上の板（天面）：001と合体するためのM2ネジ穴（2箇所） ---
 for dy in [-head_screw_pitch / 2.0, head_screw_pitch / 2.0]:
-    h_hole = Part.makeCylinder(
+    t_hole = Part.makeCylinder(
         screw_r_m2,
-        wall_t + 4.0,
-        App.Vector(0, dy, -2.0),
+        wall_t + 2.0,
+        App.Vector(0.0, dy, total_h - wall_t - 1.0),
         App.Vector(0, 0, 1)
     )
-    cut_shapes.append(h_hole)
+    cut_shapes.append(t_hole)
 
-# --- (B) 首振り用SG90サーボを落とし込むポケット＆ネジ穴（Y軸方向） ---
-# サーボ本体がすっぽり入る四角い穴
-servo_pocket = Part.makeBox(servo_w, wall_t + 4.0, servo_h)
-servo_pocket.translate(App.Vector(-servo_w/2.0, -18.0 - 2.0, -18.0))
-cut_shapes.append(servo_pocket)
-
-# サーボの耳を固定するためのM2ネジ穴（2箇所）
-for dx in [-head_screw_pitch / 2.0, head_screw_pitch / 2.0]:
-    s_hole = Part.makeCylinder(
-        screw_r_m2,
-        wall_t + 4.0,
-        App.Vector(dx, -18.0 - 2.0, -12.0),
-        App.Vector(0, 1, 0) # Y軸方向に貫通
-    )
-    cut_shapes.append(s_hole)
-
-# --- (C) 【追加修正】底面：パンサーボのホーンを埋め込むポケット（Z軸下側から） ---
-# 一文字ホーンがピタッとはまる溝を切り欠く（底面 Z=-24.0 から上に向かってくり抜く）
-horn_pocket = Part.makeBox(horn_w, horn_l, horn_depth + 0.5)
-horn_pocket.translate(App.Vector(-horn_w / 2.0, -horn_l / 2.0, -24.1))
+# --- (B) 下の板（底面）：パンサーボのホーンを埋め込むポケット（裏側から） ---
+horn_pocket = Part.makeBox(horn_w, horn_l, horn_depth)
+horn_pocket.translate(App.Vector(-horn_w / 2.0, -horn_l / 2.0, -0.1))
 cut_shapes.append(horn_pocket)
 
-# サーボホーンを底部プレートに固定するための小さなタッピングネジ用下穴（2箇所）
+# 【修正】1. サーボの回転軸と直接繋ぐ「中心のメイン貫通穴」（1箇所）
+# サーボ付属のメインビスがストンと通るように、原点(0,0)の位置を垂直に貫通させます
+center_screw = Part.makeCylinder(
+    screw_r_m2,
+    wall_t + 2.0,
+    App.Vector(0.0, 0.0, -1.0),
+    App.Vector(0, 0, 1)
+)
+cut_shapes.append(center_screw)
+
+# 2. サーボホーンのプラスチックの羽を固定するための両サイドのネジ穴（2箇所）
 for dy in [-horn_screw_p / 2.0, horn_screw_p / 2.0]:
-    h_screw = Part.makeCylinder(
+    b_screw = Part.makeCylinder(
         horn_screw_r,
-        6.0,
-        App.Vector(0, dy, -24.1),
-        App.Vector(0, 0, 1) # Z軸上に貫通させる
+        wall_t + 2.0,
+        App.Vector(0.0, dy, -1.0),
+        App.Vector(0, 0, 1)
     )
-    cut_shapes.append(h_screw)
+    cut_shapes.append(b_screw)
 
 # ---------------------------------------------------------
 # 3. くり抜き実行とドキュメント出力
@@ -107,7 +94,7 @@ cutter = cut_shapes
 for s in cut_shapes[1:]:
     cutter = cutter.fuse(s)
 
-final_shape = main_body.cut(cutter)
+final_shape = main_block.cut(cutter)
 
 neck_part = doc.addObject("Part::Feature", "Neck_Joint_Mount")
 neck_part.Shape = final_shape
@@ -117,4 +104,4 @@ doc.recompute()
 if hasattr(App, "Gui") and App.Gui.ActiveDocument and App.Gui.ActiveDocument.ActiveView:
     App.Gui.ActiveDocument.ActiveView.fitAll()
 
-print("002_Neck_Joint_Mount.py: ホーン埋込溝を追加した最新マウントが生成されました！")
+print("002_Neck_Joint_Mount.py: 底面にメイン軸ネジを含む3穴を開けた完全版が生成されました！")
