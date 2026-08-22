@@ -1,7 +1,7 @@
 # =========================================================
 # File: 002_Neck_Joint_Mount.py
 # Description: iRobapp-mini用 首の上下左右(パン・チルト)関節マウント
-# Spec: 厚みすべて3mmのコの字型 / 天面2穴 / 底面サーボホーン結合（3穴仕様）
+# Spec: 厚みすべて3mmのコの字型 / 幅を001の耳と完全一致する【8.0mm】にスリム化
 # =========================================================
 
 import FreeCAD as App
@@ -15,11 +15,11 @@ if App.getDocument(doc_name):
 doc = App.newDocument(doc_name)
 
 # ---------------------------------------------------------
-# パラメータ設定（共通・規格寸法）
+# パラメータ設定（001の耳と完全同期）
 # ---------------------------------------------------------
 wall_t     = 3.0       # すべての板の厚み: 3mm
-plate_w    = 20.0      # すべての板の共通の幅: 20mm
-plate_l_long = 36.0    # 天面・底面プレートの長さ: 36mm
+plate_w    = 8.0       # 【修正】001の耳の幅に完全一致: 8.0mm
+plate_l_long = 36.0    # 天面・底面プレートの長さ: 36.0mm
 
 # 内側の空間高さ（全高33mm - 天面3mm - 底面3mm = 内寸27mm、これで縦壁が30mmになります）
 inner_h = 27.0
@@ -30,6 +30,7 @@ screw_r_m2       = 1.1   # M2ネジ用貫通穴（半径1.1mm、直径2.2mm）
 head_screw_pitch = 27.5  # 001番と結合するためのY軸方向のネジピッチ
 
 # SG90付属の一文字ホーン埋め込み用パラメータ（底面用）
+# ※幅が8.0mmになったため、ホーン幅5.0mmのポケットも綺麗に中央に収まります
 horn_w       = 5.0       # 一文字ホーンの幅
 horn_l       = 16.0      # 一文字ホーンの長さ
 horn_depth   = 1.5       # ホーンを埋め込む深さ（底面3mmのうち1.5mmを削る）
@@ -39,6 +40,7 @@ horn_screw_r = 0.8       # サーボ付属ミニネジ用の下穴（半径0.8mm
 # ---------------------------------------------------------
 # 1. コの字型ベース形状の作成（一括切り出し）
 # ---------------------------------------------------------
+# 幅 8mm、長さ 36mm、高さ 33mm の立方体から削り出します
 main_block = Part.makeBox(plate_w, plate_l_long, total_h)
 main_block.translate(App.Vector(-plate_w / 2.0, -plate_l_long / 2.0, 0.0))
 
@@ -67,8 +69,7 @@ horn_pocket = Part.makeBox(horn_w, horn_l, horn_depth)
 horn_pocket.translate(App.Vector(-horn_w / 2.0, -horn_l / 2.0, -0.1))
 cut_shapes.append(horn_pocket)
 
-# 【修正】1. サーボの回転軸と直接繋ぐ「中心のメイン貫通穴」（1箇所）
-# サーボ付属のメインビスがストンと通るように、原点(0,0)の位置を垂直に貫通させます
+# 1. サーボの回転軸と直接繋ぐ「中心のメイン貫通穴」（1箇所）
 center_screw = Part.makeCylinder(
     screw_r_m2,
     wall_t + 2.0,
@@ -77,7 +78,7 @@ center_screw = Part.makeCylinder(
 )
 cut_shapes.append(center_screw)
 
-# 2. サーボホーンのプラスチックの羽を固定するための両サイドのネジ穴（2箇所）
+# 2. サーボホーン固定用の両サイドのネジ穴（2箇所）
 for dy in [-horn_screw_p / 2.0, horn_screw_p / 2.0]:
     b_screw = Part.makeCylinder(
         horn_screw_r,
@@ -104,4 +105,4 @@ doc.recompute()
 if hasattr(App, "Gui") and App.Gui.ActiveDocument and App.Gui.ActiveDocument.ActiveView:
     App.Gui.ActiveDocument.ActiveView.fitAll()
 
-print("002_Neck_Joint_Mount.py: 底面にメイン軸ネジを含む3穴を開けた完全版が生成されました！")
+print("002_Neck_Joint_Mount.py: 幅8mmにスリム化した完全同期のコの字型マウントが生成されました！")
