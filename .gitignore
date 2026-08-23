@@ -216,3 +216,52 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# =========================================================================
+# macOS / OS特有のゴミファイル
+# =========================================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+
+# =========================================================================
+# Xcode (iOSApp) 関連の除外設定（★これが超重要！）
+# =========================================================================
+# ビルド時に生成される一時ファイル・成果物
+build/
+DerivedData/
+
+# 個人ごとの画面の開き方や設定情報（他人が開いたときに競合する原因になります）
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+
+# Xcodeのワークスペース状態ログ
+*.xccheckout
+*.moved-aside
+*.xcuserstate
+*.xcscmblueprint
+
+# CocoaPodsやSwift Package Managerの個人キャッシュ
+.AppSandboxPersistedFonts
+CapsuleApp.xcresult
+
+
+# =========================================================================
+# Arduino / FreeCAD 関連の除外（既存の設定に上書き・マージ用）
+# =========================================================================
+# Arduinoのビルド一時フォルダ
+.build/
+.tmp/
+
+# FreeCADの自動バックアップファイル
+*.FCStd.bak
+
