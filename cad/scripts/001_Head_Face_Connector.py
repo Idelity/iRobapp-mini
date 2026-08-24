@@ -1,7 +1,7 @@
 # =========================================================
 # File: 001_Head_Face_Connector.py
-# Description: iRobapp-mini用 丸型液晶はめ込み頭部マウント（手前・奥Wリブ仕様）
-# Spec: 元の寸法100%維持 / 中央R11完全貫通 / 右真横の同じ位置に手前(Z=11)と奥(Z=5)の2基のリブを実装
+# Description: iRobapp-mini用 丸型液晶はめ込み頭部マウント（Waveshare19192突起対応・完全版）
+# Spec: 元の寸法100%維持 / 中央R11完全貫通 / 液晶用下部コネクタ逃げスリット新設 / Wリブ仕様
 # =========================================================
 
 import FreeCAD as App
@@ -36,11 +36,19 @@ head_screw_pitch = 27.5  # Y軸方向のネジピッチ
 main_body = Part.makeCylinder(head_r, head_d)
 
 # ---------------------------------------------------------
-# 2. 元の同軸「丸」だけでくり抜くステップ処理
+# 2. 元の同軸「丸」だけでくり抜くステップ処理 ＋ コネクタ逃げ
 # ---------------------------------------------------------
 # 前面からの液晶はめ込みポケット（深さ4mm）
 lcd_pocket = Part.makeCylinder(lcd_r, lcd_depth + 1.0)
 lcd_pocket.translate(App.Vector(0.0, 0.0, head_d - lcd_depth))
+
+# 【新設】Waveshare 19192専用：基板下部の「四角い出っ張り（コネクタ・部品）」を逃がす四角い箱
+# 幅20.0mm、奥行き(厚み)は液晶と同じ4.0mm、Y軸マイナス方向（下側）へ3.5mm余分に削り落とします
+conn_slit_w = 20.0
+conn_slit_h = 5.0
+conn_escape = Part.makeBox(conn_slit_w, conn_slit_h, lcd_depth + 1.0)
+# 丸いポケットのフチ（Y = -19.0mm）からさらに下へ突き抜けるように配置
+conn_escape.translate(App.Vector(-conn_slit_w / 2.0, -lcd_r - 2.5, head_d - lcd_depth))
 
 # 中央の大きな肉抜き丸穴（底面から 3.0mm の床を残す）
 center_void = Part.makeCylinder(inner_wire_r, head_d)
@@ -50,51 +58,56 @@ center_void.translate(App.Vector(0.0, 0.0, floor_t))
 center_tunnel = Part.makeCylinder(center_hole_r, head_d + 4.0)
 center_tunnel.translate(App.Vector(0.0, 0.0, -2.0))
 
-# ドッキング用M2ネジ穴（ネジが短くて済む、床厚3.0mm+2.0mmの浅型仕様）
+# ドッキング用M2ネジ穴（ネジが短くて済む、床厚 3.0mm+2.0mm の浅型仕様）
 s_hole1 = Part.makeCylinder(screw_r_m2, floor_t + 2.0, App.Vector(0.0, -head_screw_pitch / 2.0, -1.0), App.Vector(0, 0, 1))
 s_hole2 = Part.makeCylinder(screw_r_m2, floor_t + 2.0, App.Vector(0.0, head_screw_pitch / 2.0, -1.0), App.Vector(0, 0, 1))
 
-# 一括で結合してベースからくり抜く
-cutter = lcd_pocket.fuse(center_void).fuse(center_tunnel).fuse(s_hole1).fuse(s_hole2)
+# 一括で結合してベースからくり抜く（コネクタ逃げ用のconn_escapeを追加！）
+cutter = lcd_pocket.fuse(conn_escape).fuse(center_void).fuse(center_tunnel).fuse(s_hole1).fuse(s_hole2)
 base_head = main_body.cut(cutter)
 
 # ---------------------------------------------------------
-# 3. 床（板）の上にアンプ用と【修正】手前・奥のWスピーカー削り切りリブを追加
+# 3. 床（板）の上に背高アンプリブ ＆ 15mm幅Wスピーカーリブを追加
 # ---------------------------------------------------------
 add_shapes = []
 
-# --- MAX98357A アンプ挟み込み用リブ（左側の奥の床に配置 / 高さ5mm） ---
-amp_rib_h = 5.0
-amp_rib_w = 2.0
-amp_rib_t = 2.0
+# --- MAX98357A アンプ挟み込み用リブ（左側の奥の床に配置 / 高さ10.0mm、厚み5mm仕様） ---
+amp_rib_h = 10.0  
+amp_rib_w = 5.0   
+amp_rib_t = 2.0   
+
 amp_rib1 = Part.makeBox(amp_rib_w, amp_rib_t, amp_rib_h)
-amp_rib1.translate(App.Vector(-13.0, 10.0, floor_t)) # X = -13mm, Y = 10mm
+amp_rib1.translate(App.Vector(-13.0, 10.25, floor_t)) 
+
 amp_rib2 = Part.makeBox(amp_rib_w, amp_rib_t, amp_rib_h)
-amp_rib2.translate(App.Vector(-13.0, -12.0, floor_t)) # X = -13mm, Y = -12mm（隙間20mm）
+amp_rib2.translate(App.Vector(-13.0, -12.25, floor_t)) 
+
 add_shapes.append(amp_rib1)
 add_shapes.append(amp_rib2)
 
-# --- 27mmスピーカー用 5mm×5mm×5mm 削り切りリブの形状定義 ---
-spk_rib_size = 5.0
+# --- 27mmスピーカー用 15mm幅削り切りリブの形状定義 ---
+spk_rib_w = 5.0   
+spk_rib_t = 15.0  
+spk_rib_h = 5.0   
+
 groove_w = 5.5
 groove_t = 2.5
-groove_d = 6.0
+groove_d = 20.0
 
-def create_shaved_rib():
-    solid = Part.makeBox(spk_rib_size, spk_rib_size, spk_rib_size)
+def create_wide_shaved_rib():
+    solid = Part.makeBox(spk_rib_w, spk_rib_t, spk_rib_h)
     groove = Part.makeBox(groove_w, groove_d, groove_t)
-    groove.translate(App.Vector(-0.2, -0.5, spk_rib_size - groove_t))
+    groove.translate(App.Vector(-0.2, -2.0, spk_rib_h - groove_t))
     return solid.cut(groove)
 
-# 【1基目：手前側リブ】位置はそのままキープ（液晶のすぐ裏 Z = 11.0mm に配置）
-shaved_spk_rib_front = create_shaved_rib()
-shaved_spk_rib_front.translate(App.Vector(12.0, -spk_rib_size / 2.0, 11.0))
+# 【1基目：手前側リブ（15mmワイド版）】Z = 12.0mm
+shaved_spk_rib_front = create_wide_shaved_rib()
+shaved_spk_rib_front.translate(App.Vector(12.0, -spk_rib_t / 2.0, 12.0))
 add_shapes.append(shaved_spk_rib_front)
 
-# 【2基目：奥側リブ】全く同じ大きさのものを、すぐ真ろ（Z = 5.0mm の奥側）に追加！
-# XとYの平面上の位置（右側面中央）は完璧に同じで、奥行き（Z軸方向）だけをずらして2階建てに配置
-shaved_spk_rib_back = create_shaved_rib()
-shaved_spk_rib_back.translate(App.Vector(12.0, -spk_rib_size / 2.0, 5.0))
+# 【2基目：奥側リブ（15mmワイド版）】Z = 4.5mm
+shaved_spk_rib_back = create_wide_shaved_rib()
+shaved_spk_rib_back.translate(App.Vector(12.0, -spk_rib_t / 2.0, 4.5))
 add_shapes.append(shaved_spk_rib_back)
 
 # 各リブを元の土台にダイレクトに一体化（fuse）させる
@@ -111,4 +124,4 @@ doc.recompute()
 if hasattr(App, "Gui") and App.Gui.ActiveDocument and App.Gui.ActiveDocument.ActiveView:
     App.Gui.ActiveDocument.ActiveView.fitAll()
 
-print("001_Head_Face_Connector.py: 手前と奥のWリブ構造により、前後のグラつきを完璧に抑える仕様が確定しました！")
+print("001_Head_Face_Connector.py: 液晶下部の出っ張りも完璧に逃がす、真の最終マスターデータがFIXしました！")
