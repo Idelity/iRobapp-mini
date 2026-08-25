@@ -40,16 +40,16 @@ public:
     cfg.spi_host = SPI2_HOST;
     cfg.spi_mode = 0;
     cfg.freq_write = 40000000;
-    cfg.pin_sclk = 10;         // シルク D10 -> GPIO 10
-    cfg.pin_mosi = 8;          // シルク D8  -> GPIO 8
+    cfg.pin_sclk = 7;          // シルク D8 -> GPIO 7(対応済み)
+    cfg.pin_mosi = 9;          // シルク D10  -> GPIO 9(対応済み)
     cfg.pin_miso = -1;
-    cfg.pin_dc   = 3;          // シルク D2  -> GPIO 3
+    cfg.pin_dc   = 8;          // シルク D9  -> GPIO 8(対応済み)
     _bus_instance.config(cfg);
     _panel_instance.setBus(&_bus_instance);
 
     auto p_cfg = _panel_instance.config();
-    p_cfg.pin_cs           = 4;   // シルク D3  -> GPIO 4
-    p_cfg.pin_rst          = 2;   // シルク D1  -> GPIO 2
+    p_cfg.pin_cs           = 44;  // シルク D7  -> GPIO 44(対応済み)
+    p_cfg.pin_rst          = 43;  // シルク D6  -> GPIO 43(対応済み)
     p_cfg.panel_width      = 240;
     p_cfg.panel_height     = 240;
     p_cfg.offset_x         = 0;
@@ -67,8 +67,8 @@ LGFX_Sprite canvas(&lcd);
 // -------------------------------------------------------------------------
 // 3. ピン定義 & グローバル変数
 // -------------------------------------------------------------------------
-const int PIN_SERVO_PAN  = 5;   // シルク D4 -> GPIO 5
-const int PIN_SERVO_TAIL = 6;   // シルク D5 -> GPIO 6
+const int PIN_SERVO_PAN  = 1;   // シルク D0 -> GPIO 1(対応済み)
+const int PIN_SERVO_TAIL = 2;   // シルク D1 -> GPIO 2(対応済み)
 
 Servo servoPan;
 Servo servoTail;
@@ -246,7 +246,7 @@ void setup() {
 }
 
 // -------------------------------------------------------------------------
-// 7. メメインループ
+// 7. メインループ
 // -------------------------------------------------------------------------
 void loop() {
   if (!deviceConnected && oldDeviceConnected) {
