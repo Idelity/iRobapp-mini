@@ -11,7 +11,7 @@ iRobapp-mini/
 ├── 📁 docs/                      # プロジェクトの解説ドキュメント
 │   ├── assembly-guide.md         # iRobapp-miniハードウェアの組み立て手順書
 │   ├── component-dimensions.md   # iRobapp-miniパーツ寸法表（FreeCAD設計基準）
-│   ├── concept.md                # iRobapp-miniのコンセプトガイド
+│   ├── concept.md                # iRobapp-miniのコンセプトガイドについては下記を参照
 │   ├── contributing.md           # 開発者向け：ローカル環境構築 ＆ 開発開始手順書
 │   ├── development-log.md        # iRobapp-mini 開発日記 
 │   ├── pinout-wiring-table.md    # iRobapp-mini ピンアサイン・配線表
@@ -25,3 +25,10 @@ iRobapp-mini/
 ├── .gitignore                    # 不要なファイル（FreeCADのバックアップ等）を除外する設定
 └── README.md                     # プロジェクトの全体説明書
 ```
+## 📄 iRobapp Documentation
+
+- 🇯🇵 Japanese Concept Guide（日本語版コンセプトガイド）  
+  https://github.com/Idelity/iRobapp/blob/main/docs/iRobapp-concept.md
+
+- 🌍 English Concept Guide  
+  https://github.com/Idelity/iRobapp/blob/main/docs/iRobapp-concept-en.md
