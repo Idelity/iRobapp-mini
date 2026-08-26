@@ -71,10 +71,10 @@ LGFX_Sprite canvas(&lcd);
 const int PIN_SERVO_PAN  = 1;   // GPIO 1（シルクはD0）
 const int PIN_SERVO_TAIL = 2;   // GPIO 2（シルクはD1）
 
-const int PIN_I2S_LRCLK  = 3;    // GPIO 3（シルクはD2） WS
-const int PIN_I2S_BCLK   = 4;     // GPIO 4（シルクはD3） BCK
-const int PIN_I2S_DIN    = 5;       // GPIO 5（シルクはD4） DATA
-const int PIN_LCD_BL     = 6;      // GPIO 6（シルクはD5） Backlight
+const int PIN_I2S_LRCLK  = 3;   // GPIO 3（シルクはD2） WS
+const int PIN_I2S_BCLK   = 4;   // GPIO 4（シルクはD3） BCK
+const int PIN_I2S_DIN    = 5;   // GPIO 5（シルクはD4） DATA
+const int PIN_LCD_BL     = 6;   // GPIO 6（シルクはD5） Backlight
 
 // 🎯 iPhone側と完全に一致させる16000Hzに目盛りをカチッと固定
 #define SAMPLE_RATE      16000 //8000:固定電話 16000:標準 22050:ラジオ 24000:テレビ
@@ -84,7 +84,7 @@ Servo servoTail;
 
 float eyeY = 120.0;
 float targetEyeY = 120.0;
-const float eyeX = 120.0;
+float eyeX = 120.0;
 const float eyeRadius = 45.0;
 const float whiteRadius = 95.0;
 
@@ -175,7 +175,7 @@ class MyServerCallbacks: public BLEServerCallbacks {
 };
 
 // -------------------------------------------------------------------------
-// 目の制御データ受信コールバック
+// 目の制御データ受信コールバック（左右・上下の2軸データ対応版）
 // -------------------------------------------------------------------------
 class EyeCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
@@ -183,10 +183,24 @@ class EyeCallbacks: public BLECharacteristicCallbacks {
         if (value.length() > 0) {
             lastInteractionTime = millis();
             isSleepMode = false;
-            targetEyeY = value.toFloat();
+
+            // iPhoneから「X,Y」（例：「70,150」）というコンマ区切りの文字が届くので分解します
+            int commaIndex = value.indexOf(',');
+            if (commaIndex != -1) {
+                String xStr = value.substring(0, commaIndex);
+                String yStr = value.substring(commaIndex + 1);
+                
+                // ターゲット座標を上下左右、同時に更新！
+                eyeX = xStr.toFloat(); 
+                targetEyeY = yStr.toFloat();
+            } else {
+                // コンマがない従来の単発数値は、今まで通り上下（Y軸）の指示として処理
+                targetEyeY = value.toFloat();
+            }
         }
     }
 };
+
 
 // -------------------------------------------------------------------------
 // 音声ストリーミングデータ受信コールバック（ピュア直撃版）
@@ -251,25 +265,44 @@ void updateEyePhysics() {
 }
 
 // -------------------------------------------------------------------------
-// 目の液晶描画処理
+// 目の液晶描画処理（上下左右キョロキョロ完全アジャスト版）
 // -------------------------------------------------------------------------
 void drawEye() {
-  canvas.clear(TFT_BLACK);
-  canvas.fillCircle(120, 120, whiteRadius, TFT_WHITE);
+  canvas.clear(TFT_BLACK); // 背景を黒でリセット
 
-  if (blinkProgress < 1.0f) {
-    canvas.fillCircle(eyeX, eyeY, eyeRadius, TFT_BLACK);
-    canvas.fillCircle(eyeX - 12, eyeY - 12, 10, TFT_WHITE);
-  }
+  int leftEyeX = 60;   
+  int rightEyeX = 180; 
+  int baseEyeY = 120;  // 🌟縦の中心は120
 
+  int customWhiteRadius = 38; 
+  int customEyeRadius = 18;   
+
+  // 🌟【最重要修正】横（X）だけでなく、縦（Y）の動きにも0.4倍の可愛いブレーキをかける！
+  // これにより、iPhoneからの「上下」の指示でも黒目が白目からはみ出さなくなります
+  float offsetX = (eyeX - 120.0f) * 0.4f;
+  float offsetY = (eyeY - 120.0f) * 0.4f; // 🎯画面中心(120)からのズレを0.4倍に減衰
+
+  // 1. 【左目】白目と、補正された上下左右の黒目
+  canvas.fillCircle(leftEyeX, baseEyeY, customWhiteRadius, TFT_WHITE); 
+  canvas.fillCircle(leftEyeX + offsetX, baseEyeY + offsetY, customEyeRadius, TFT_BLACK); // 🎯縦方向(baseEyeY + offsetY)に修正
+  canvas.fillCircle(leftEyeX + offsetX - 4, baseEyeY + offsetY - 4, 3, TFT_WHITE);       // ハイライトも追従
+
+  // 2. 【右目】白目と、補正された上下左右の黒目
+  canvas.fillCircle(rightEyeX, baseEyeY, customWhiteRadius, TFT_WHITE); 
+  canvas.fillCircle(rightEyeX + offsetX, baseEyeY + offsetY, customEyeRadius, TFT_BLACK); // 🎯縦方向(baseEyeY + offsetY)に修正
+  canvas.fillCircle(rightEyeX + offsetX - 4, baseEyeY + offsetY - 4, 3, TFT_WHITE);       // ハイライトも追従
+
+  // 3. 【まぶた】瞬きのアニメーション（変更なし）
   float currentProgress = (blinkProgress > 1.0f) ? (2.0f - blinkProgress) : blinkProgress;
   if (currentProgress > 0.0f) {
     int lidHeight = (int)(120 * currentProgress);
-    canvas.fillRect(0, 0, 240, lidHeight, TFT_BLACK);
-    canvas.fillRect(0, 240 - lidHeight, 240, lidHeight, TFT_BLACK);
+    canvas.fillRect(0, 0, 240, lidHeight, TFT_BLACK);          
+    canvas.fillRect(0, 240 - lidHeight, 240, lidHeight, TFT_BLACK); 
   }
-  canvas.pushSprite(0, 0);
+
+  canvas.pushSprite(0, 0); 
 }
+
 
 // -------------------------------------------------------------------------
 // 起動セットアップ
@@ -321,13 +354,16 @@ void setup() {
   
   Serial.println("🚀 オープニング演出完了！自律モードに移行します。");
 
-  // WiFiのMACアドレスから下4桁を取得して固有デバイス名を生成
+  // WiFiを起動　WiFiのMACアドレスから下4桁を取得して固有デバイス名を生成
   WiFi.mode(WIFI_MODE_STA);
+  // 無線チップが完全に目を覚ますまで、100ミリ秒（0.1秒）だけ待ちます
+  delay(100); 
+  // 準備が整ったので、安全に本物のMacアドレスを取得！
   String macStr = WiFi.macAddress();
   macStr.replace(":", "");
+  // 下4桁を切り出してデバイス名にくっつける
   String macSuffix = macStr.substring(macStr.length() - 4);
   String deviceName = "iRobapp-mini-" + macSuffix;
-  
   Serial.printf(">>> デバイス名を確定しました: %s\n", deviceName.c_str());
 
   BLEDevice::init(deviceName.c_str()); 

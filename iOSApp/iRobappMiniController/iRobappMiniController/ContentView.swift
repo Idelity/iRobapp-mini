@@ -108,14 +108,35 @@ struct ContentView: View {
                 }
                 .background(Color(.systemBackground)).border(Color(.systemGray5), width: 1).cornerRadius(12).padding(.horizontal)
                 
-                // 👁️ 視線手動コントロール
+                // 👁️ 視線手動コントロール（上下左右・十字フル対応版）
                 if bleManager.isConnected {
-                    HStack(spacing: 12) {
-                        Button("上を向く") { bleManager.sendEyePosition(yValue: 60) }.buttonStyle(.bordered)
-                        Button("正面") { bleManager.sendEyePosition(yValue: 120) }.buttonStyle(.bordered)
-                        Button("下を向く") { bleManager.sendEyePosition(yValue: 180) }.buttonStyle(.bordered)
+                    VStack(spacing: 8) {
+                        // 1段目：上を向くボタン
+                        Button("上を向く") {
+                            bleManager.sendEyePosition(xValue: 120, yValue: 60)
+                        }.buttonStyle(.bordered)
+                        
+                        // 2段目：左・正面・右を横一列に綺麗に並べる
+                        HStack(spacing: 12) {
+                            Button("← 左向く") {
+                                bleManager.sendEyePosition(xValue: 60, yValue: 120)
+                            }.buttonStyle(.bordered)
+                            
+                            Button(" 正面 ") {
+                                bleManager.sendEyePosition(xValue: 120, yValue: 120)
+                            }.buttonStyle(.borderedProminent) // 🎯正面は分かりやすく目立たせる
+                            
+                            Button("右向く →") {
+                                bleManager.sendEyePosition(xValue: 180, yValue: 120)
+                            }.buttonStyle(.bordered)
+                        }
+                        
+                        // 3段目：下を向くボタン
+                        Button("下を向く") {
+                            bleManager.sendEyePosition(xValue: 120, yValue: 180)
+                        }.buttonStyle(.bordered)
                     }
-                    .padding(.vertical, 5)
+                    .padding(.vertical, 8)
                 }
                 Spacer()
                 

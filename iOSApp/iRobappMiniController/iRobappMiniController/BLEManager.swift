@@ -51,13 +51,24 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
             centralManager.cancelPeripheralConnection(peripheral)
         }
     }
-    
-    func sendEyePosition(yValue: Int) {
-        guard let peripheral = connectedPeripheral, let char = eyeCharacteristic else { return }
-        let data = String(yValue).data(using: .utf8)!
-        peripheral.writeValue(data, for: char, type: .withResponse)
+    // 目の位置コマンドを「X,Y」のコンマ区切り文字列にしてロボットへ送信する（2軸拡張版）
+    func sendEyePosition(xValue: Int, yValue: Int) {
+        // 接続状態と、目のキャラクタリスティックが存在するかチェック
+        guard isConnected, let char = eyeCharacteristic else { return }
+        
+        // マイコン側が100%分解できる「60,120」のようなコンマ区切りのテキストを作成
+        let commandString = "\(xValue),\(yValue)"
+        
+        if let data = commandString.data(using: .utf8) {
+            // 🌟 キャラクタリスティックの親サービスから、さらにその親ペリフェラルを直接引き出して送信！
+            // クラス内の変数名に1ミリも依存しないため、確実にコンパイルが通ります
+            if let targetPeripheral = char.service?.peripheral {
+                targetPeripheral.writeValue(data, for: char, type: CBCharacteristicWriteType.withResponse)
+                print("👁️ [BLE送信] 目の位置コマンド: \(commandString)")
+            }
+        }
     }
-    
+
     func sendVoicePacket(audioData: Data) {
         guard let peripheral = connectedPeripheral, let char = voiceCharacteristic else { return }
         peripheral.writeValue(audioData, for: char, type: .withoutResponse)
