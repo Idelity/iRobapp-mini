@@ -146,15 +146,25 @@ struct ContentView: View {
             .onAppear {
                 voiceManager.setup(bleManager: bleManager)
                 bleManager.startScanning()
+                
+                // 🌟 音声認識が完了した時の対話パイプラインの挙動
                 voiceManager.onSpeechRecognized = { text in
                     if !isPremiumAI {
-                        let gemma = GemmaAIManager()
-                        gemma.generateLocalResponse(prompt: text) { reply in
-                            voiceManager.speakAndStream(text: reply)
+                        // 🌟 重いAI推論はグローバル（バックグラウンド）キューで実行
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            // ※もし GemmaAIManager.shared があればそちらを推奨します
+                            let gemma = GemmaAIManager()
+                            gemma.generateLocalResponse(prompt: text) { reply in
+                                // 🌟 UIの更新とBLE送信トリガーは必ずメインスレッドに戻す
+                                DispatchQueue.main.async {
+                                    voiceManager.speakAndStream(text: reply)
+                                }
+                            }
                         }
                     } else {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                            let cloudReply = "（有料版モック）「\(text)」ですね。クラウドでお返事しています。"
+                        // 有料版（クラウド）の模擬処理
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            let cloudReply = "「\(text)」ですね。クラウドでお返事しています。"
                             voiceManager.speakAndStream(text: cloudReply)
                         }
                     }

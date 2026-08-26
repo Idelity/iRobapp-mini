@@ -1,7 +1,7 @@
 // =========================================================================
 // File: firmware/main/main.ino
-// Description: iRobapp-mini メイン制御ファームウェア（最新環境完全対応版）
-// Spec: WiFi.macAddressによる安全な固有ID広告、最新ESP32コア対応BLE・液晶・サーボ
+// Description: iRobapp-mini メイン制御ファームウェア（ピュアモノラル直撃版）
+// Spec: 複雑なバッファ変換を全廃し、起動音と同じシンプルなモノラルルートで再生する最終確定版
 // =========================================================================
 
 #define LGFX_USE_V1
@@ -15,7 +15,7 @@
 #include <driver/i2s.h>
 
 // -------------------------------------------------------------------------
-// 1. BLE通信のUUIDおよびパラメータ設定
+// BLE通信のUUIDおよびパラメータ設定
 // -------------------------------------------------------------------------
 #define SERVICE_UUID            "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_EYE_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
@@ -29,7 +29,7 @@ bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
 // -------------------------------------------------------------------------
-// 2. LovyanGFX 液晶初期化設定 (GC9A01専用カスタムクラス)
+// LovyanGFX 液晶初期化設定 (GC9A01専用カスタムクラス)
 // -------------------------------------------------------------------------
 class LGFX_iRobapp : public lgfx::LGFX_Device {
   lgfx::Panel_GC9A01 _panel_instance;
@@ -41,22 +41,22 @@ public:
     cfg.spi_host = SPI2_HOST;
     cfg.spi_mode = 0;
     cfg.freq_write = 40000000;
-    cfg.pin_sclk = 7;          // シルク D8 -> GPIO 7(対応済み)
-    cfg.pin_mosi = 9;          // シルク D10  -> GPIO 9(対応済み)
+    cfg.pin_sclk = 7;          // GPIO 7（シルクはD8） 
+    cfg.pin_mosi = 9;        // GPIO 9（シルクはD10）   
     cfg.pin_miso = -1;
-    cfg.pin_dc   = 8;          // シルク D9  -> GPIO 8(対応済み)
+    cfg.pin_dc   = 8;          // GPIO 8（シルクはD9） 
     _bus_instance.config(cfg);
     _panel_instance.setBus(&_bus_instance);
 
     auto p_cfg = _panel_instance.config();
-    p_cfg.pin_cs           = 44;  // シルク D7  -> GPIO 44(対応済み)
-    p_cfg.pin_rst          = 43;  // シルク D6  -> GPIO 43(対応済み)
-    p_cfg.panel_width      = 240;
-    p_cfg.panel_height     = 240;
+    p_cfg.pin_cs           = 44;  // GPIO 44（シルクはD7） 
+    p_cfg.pin_rst          = 43;  // GPIO 43（シルクはD6） 
+    p_cfg.panel_width  = 240;
+    p_cfg.panel_height  = 240;
     p_cfg.offset_x         = 0;
     p_cfg.offset_y         = 0;
-    p_cfg.invert           = true;
-    p_cfg.rgb_order        = false;
+    p_cfg.invert              = true;
+    p_cfg.rgb_order       = false;
     _panel_instance.config(p_cfg);
     setPanel(&_panel_instance);
   }
@@ -66,17 +66,18 @@ LGFX_iRobapp lcd;
 LGFX_Sprite canvas(&lcd);
 
 // -------------------------------------------------------------------------
-// 3. ピン定義 & グローバル変数
+// ピン定義 & グローバル変数
 // -------------------------------------------------------------------------
-const int PIN_SERVO_PAN  = 1;   // シルク D0 -> GPIO 1(対応済み)
-const int PIN_SERVO_TAIL = 2;   // シルク D1 -> GPIO 2(対応済み)
+const int PIN_SERVO_PAN  = 1;   // GPIO 1（シルクはD0）
+const int PIN_SERVO_TAIL = 2;   // GPIO 2（シルクはD1）
 
-const int PIN_I2S_LRCLK  = 3;   // シルク D2 -> GPIO 3 (WS)
-const int PIN_I2S_BCLK   = 4;   // シルク D3 -> GPIO 4 (BCK)
-const int PIN_I2S_DIN    = 5;   // シルク D4 -> GPIO 5 (DATA)
-const int PIN_LCD_BL     = 6;   // シルク D5 -> GPIO 6 (Backlight制御用)
+const int PIN_I2S_LRCLK  = 3;    // GPIO 3（シルクはD2） WS
+const int PIN_I2S_BCLK   = 4;     // GPIO 4（シルクはD3） BCK
+const int PIN_I2S_DIN    = 5;       // GPIO 5（シルクはD4） DATA
+const int PIN_LCD_BL     = 6;      // GPIO 6（シルクはD5） Backlight
 
-#define SAMPLE_RATE      16000
+// 🎯 iPhone側と完全に一致させる16000Hzに目盛りをカチッと固定
+#define SAMPLE_RATE      16000 //8000:固定電話 16000:標準 22050:ラジオ 24000:テレビ
 
 Servo servoPan;
 Servo servoTail;
@@ -95,19 +96,25 @@ bool isSleepMode = false;
 unsigned long lastInteractionTime = 0;
 const unsigned long SLEEP_TIMEOUT = 30000;
 
+volatile bool isAudioPlaying = false;
+volatile unsigned long lastAudioPacketTime = 0;
+unsigned long tailMotionStartTime = 0;
+bool isTailWaggingForVoice = false;
+
 // -------------------------------------------------------------------------
-// 4. I2S オーディオ初期化 ＆ 音量安全ガード付きシステム起動音
+// I2S オーディオ初期化
 // -------------------------------------------------------------------------
 void initI2SAudio() {
   i2s_config_t i2s_config = {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
     .sample_rate = SAMPLE_RATE,
     .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,
-    .communication_format = I2S_COMM_FORMAT_STAND_I2S,
+    // 🎯 起動音が綺麗に鳴る元の「モノラル専用モード」に戻して回路を安定させます
+    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT, 
+    .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_STAND_I2S),
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
     .dma_buf_count = 8,
-    .dma_buf_len = 64,
+    .dma_buf_len = 64, 
     .use_apll = false,
     .tx_desc_auto_clear = true
   };
@@ -122,10 +129,14 @@ void initI2SAudio() {
   i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
   i2s_set_pin(I2S_NUM_0, &pin_config);
   i2s_zero_dma_buffer(I2S_NUM_0);
-  Serial.println("[OK] I2S Audio Driver Initialized.");
+  Serial.println("[OK] I2S Audio Driver Initialized (Mono Mode).");
 }
 
+// -------------------------------------------------------------------------
+// 起動時の音再生
+// -------------------------------------------------------------------------
 void playSystemBootSound() {
+  i2s_start(I2S_NUM_0);
   const int note_length = 2000; 
   int16_t sound_buffer[note_length];
   size_t bytes_written;
@@ -133,7 +144,7 @@ void playSystemBootSound() {
   // 1音目：ピピッの「ピ」（高いレの音：1174Hz）
   for (int i = 0; i < note_length; i++) {
     float angle = (2.0 * PI * 1174.0 * i) / SAMPLE_RATE;
-    sound_buffer[i] = (int16_t)(sin(angle) * 100); // 🔊うるさくない優しい音量に制限！
+    sound_buffer[i] = (int16_t)(sin(angle) * 100); 
   }
   i2s_write(I2S_NUM_0, (const char*)sound_buffer, note_length * sizeof(int16_t), &bytes_written, portMAX_DELAY);
   delay(50); 
@@ -146,9 +157,8 @@ void playSystemBootSound() {
   i2s_write(I2S_NUM_0, (const char*)sound_buffer, note_length * sizeof(int16_t), &bytes_written, portMAX_DELAY);
   i2s_zero_dma_buffer(I2S_NUM_0); 
 }
-
 // -------------------------------------------------------------------------
-// 5. BLEサーバー・接続状態コールバック
+// BLEサーバー接続状態コールバック
 // -------------------------------------------------------------------------
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
@@ -164,7 +174,9 @@ class MyServerCallbacks: public BLEServerCallbacks {
     }
 };
 
-// 👁️ 目の制御用データ受信コールバック
+// -------------------------------------------------------------------------
+// 目の制御データ受信コールバック
+// -------------------------------------------------------------------------
 class EyeCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
         String value = pCharacteristic->getValue();
@@ -172,35 +184,46 @@ class EyeCallbacks: public BLECharacteristicCallbacks {
             lastInteractionTime = millis();
             isSleepMode = false;
             targetEyeY = value.toFloat();
-            Serial.printf("Eye Y目標更新: %f\n", targetEyeY);
         }
     }
 };
 
-// 🔊 音声ストリーミングデータ受信コールバック
+// -------------------------------------------------------------------------
+// 音声ストリーミングデータ受信コールバック（ピュア直撃版）
+// -------------------------------------------------------------------------
 class VoiceCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
-        String value = pCharacteristic->getValue();
-        if (value.length() > 0) {
+        // iPhoneから送られてきた生のバイナリデータと正確な長さをそのまま取得
+        uint8_t* rawData = pCharacteristic->getData();
+        size_t dataLength = pCharacteristic->getLength();
+        
+        if (dataLength > 0 && rawData != nullptr) {
             lastInteractionTime = millis();
             isSleepMode = false;
-            
-            // トリガー動作：音声パケット受信時に尻尾を2回振る
-            static unsigned long lastTailTrigger = 0;
-            if (millis() - lastTailTrigger > 3000) { 
-                for(int i=0; i<2; i++) {
-                    servoTail.write(120); delay(120);
-                    servoTail.write(60);  delay(120);
-                }
-                servoTail.write(90);
-                lastTailTrigger = millis();
+            lastAudioPacketTime = millis();
+
+            // 🌟話が始まった瞬間だけアンプを起動
+            if (!isAudioPlaying) {
+                i2s_start(I2S_NUM_0);
+                isAudioPlaying = true;
+            }
+
+            // 🌟【フリーズ・無音原因の完全解消】
+            // データの長さ（180バイト未満の端数パケットなど）を一切気にせず、
+            // 届いたバイナリをそのまま遅延ゼロ（非ブロック）でI2Sへ直撃書き込みします！
+            size_t bytes_written;
+            i2s_write(I2S_NUM_0, (const char*)rawData, dataLength, &bytes_written, 0);
+
+            if (!isTailWaggingForVoice) {
+                isTailWaggingForVoice = true;
+                tailMotionStartTime = millis();
             }
         }
     }
 };
 
 // -------------------------------------------------------------------------
-// 6. 描画・物理演算ロジック
+// 目の物理演算ロジック
 // -------------------------------------------------------------------------
 void updateEyePhysics() {
   if (isSleepMode) {
@@ -227,6 +250,9 @@ void updateEyePhysics() {
   }
 }
 
+// -------------------------------------------------------------------------
+// 目の液晶描画処理
+// -------------------------------------------------------------------------
 void drawEye() {
   canvas.clear(TFT_BLACK);
   canvas.fillCircle(120, 120, whiteRadius, TFT_WHITE);
@@ -246,7 +272,7 @@ void drawEye() {
 }
 
 // -------------------------------------------------------------------------
-// 7. 起動セットアップ
+// 起動セットアップ
 // -------------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
@@ -273,26 +299,25 @@ void setup() {
   Serial.println("🔊 システム起動音を再生します...");
   playSystemBootSound();
 
-  // 🔇起動音が終わった瞬間にI2S回路を完全にシャットダウン！
-  i2s_zero_dma_buffer(I2S_NUM_0); // バッファをゼロクリア
-  i2s_stop(I2S_NUM_0);            // ⚡アンプへのクロック信号を物理的にストップ（完全無音化）
+  // 🔇起動音が終わったら一度バッファをクリアして、アンプを止めて待機（無音化）
+  i2s_zero_dma_buffer(I2S_NUM_0); 
+  i2s_stop(I2S_NUM_0);            
   Serial.println(">>> 雑音を完全シャットアウトしました。スピーカーは安全に静止しています。");
 
-  // 🤖 豪華オープニングアトラクション・モーション発動！
   Serial.println("🤖 起動セルフチェック開始：首と尻尾を動かします");
-  
+
   // 1. 首を「右 ➔ 正面 ➔ 左 ➔ 正面」にシャキシャキ動かす
-  servoPan.write(60);   delay(300); // 右を向く
-  servoPan.write(90);   delay(200); // 正面に戻る
-  servoPan.write(120);  delay(300); // 左を向く
-  servoPan.write(90);   delay(300); // 正面に戻って静止
+  servoPan.write(60);   delay(300);  // 右を向く
+  servoPan.write(90);   delay(200);  // 正面に戻る
+  servoPan.write(120);  delay(300);  // 左を向く
+  servoPan.write(90);   delay(300);  // 正面に戻って静止
 
   // 2. 尻尾をお尻フリフリと「2回」振る
   for(int i = 0; i < 2; i++) {
-    servoTail.write(120); delay(150); // 左フリ
-    servoTail.write(60);  delay(150); // 右フリ
+    servoTail.write(120); delay(150);
+    servoTail.write(60);  delay(150);
   }
-  servoTail.write(90);  delay(100);   // 正面に戻して終了
+  servoTail.write(90);  delay(100);
   
   Serial.println("🚀 オープニング演出完了！自律モードに移行します。");
 
@@ -319,7 +344,8 @@ void setup() {
 
   pVoiceCharacteristic = pService->createCharacteristic(
                           CHARACTERISTIC_VOICE_UUID,
-                          BLECharacteristic::PROPERTY_WRITE  |
+                          BLECharacteristic::PROPERTY_WRITE    |
+                          BLECharacteristic::PROPERTY_WRITE_NR | 
                           BLECharacteristic::PROPERTY_NOTIFY
                         );
   pVoiceCharacteristic->setCallbacks(new VoiceCallbacks());
@@ -335,16 +361,10 @@ void setup() {
   Serial.println(">>> BLEアドバタイズ中...");
   lastBlinkTime = millis();
   lastInteractionTime = millis();
-
-  // 🔇 アンプのゴミデータを完全にクリアして、スピーカーを強制消音！
-  i2s_zero_dma_buffer(I2S_NUM_0);
-  size_t tmp_bytes;
-  i2s_write(I2S_NUM_0, NULL, 0, &tmp_bytes, portMAX_DELAY); 
-  Serial.println(">>> スピーカーを完全消音し、iPhoneからの音声待ち受けに入りました。");
 }
 
 // -------------------------------------------------------------------------
-// 8. メインループ
+// メインループ
 // -------------------------------------------------------------------------
 void loop() {
   if (!deviceConnected && oldDeviceConnected) {
@@ -356,16 +376,41 @@ void loop() {
       oldDeviceConnected = deviceConnected;
   }
 
+  // 🔊 音声の無通信タイムアウト判定（パケットが300ms途絶えたらアンプを安全に寝かせる）
+  if (isAudioPlaying && (millis() - lastAudioPacketTime > 300)) {
+    i2s_zero_dma_buffer(I2S_NUM_0);
+    i2s_stop(I2S_NUM_0);
+    isAudioPlaying = false;
+    Serial.println(">>> 音声ストリーム終了。アンプを省電力停止しました。");
+  }
+
   if (millis() - lastInteractionTime > SLEEP_TIMEOUT) {
     isSleepMode = true;
   }
 
-  // 自律モーション（接続されていない時、または通常モード時）
-  if (!isSleepMode && random(0, 1000) < 3) {
+  // おしゃべり受信時の尻尾フリフリ制御
+  if (isTailWaggingForVoice) {
+    unsigned long elapsed = millis() - tailMotionStartTime;
+    if (elapsed < 135) {
+      servoTail.write(120);
+    } else if (elapsed < 270) {
+      servoTail.write(60);
+    } else if (elapsed < 405) {
+      servoTail.write(120);
+    } else if (elapsed < 540) {
+      servoTail.write(60);
+    } else {
+      servoTail.write(90);
+      isTailWaggingForVoice = false; 
+    }
+  } 
+  else if (!isSleepMode && random(0, 1000) < 3) {
     servoPan.write(random(60, 120));
     if(random(0, 2) == 0) {
-      servoTail.write(110); delay(100);
-      servoTail.write(70);  delay(100);
+      servoTail.write(110); 
+      delay(80);
+      servoTail.write(70);  
+      delay(80);
       servoTail.write(90);
     }
   }
