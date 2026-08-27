@@ -5,13 +5,17 @@
 
 import SwiftUI
 import CoreBluetooth
-
+import AVFAudio
 // ⚙️ 1. 設定画面専用のパーツ
 struct SettingsView: View {
     @Binding var isPremiumAI: Bool
     @Binding var apiKey: String
+    @ObservedObject var voiceManager: VoicePipelineManager
     @Environment(\.dismiss) var dismiss
     
+    // AIモードの選択肢
+    let aiModes = ["ノーマル", "ツンデレ", "ロボット風", "やさしい"]
+
     var body: some View {
         NavigationView {
             Form {
@@ -30,6 +34,103 @@ struct SettingsView: View {
                         Text("Gemma 2B モデルが有効です。完全オフラインで動作します。").font(.caption).foregroundColor(.gray)
                     }
                 }
+                // --- オーディオ基本設定 ---
+                Section(header: Text("オーディオ設定")) {
+                    // ボリューム調整スライダー
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text("ボリューム（音圧）")
+                            Spacer()
+                            Text("\(Int(voiceManager.volumeMultiplier))")
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $voiceManager.volumeMultiplier, in: 0...60000, step: 1000)
+                    }
+                    
+                    // モノラル / ステレオ切り替え
+                    Toggle(isOn: $voiceManager.isStereoMode) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("高音量ステレオモード")
+                                .font(.body)
+                            Text(voiceManager.isStereoMode ? "左右フル駆動（大音量・通信量2倍）" : "モノラル駆動（省通信・標準音量）")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                // --- BLE通信タイミング調整セクション ---
+                Section(header: Text("BLE送信ピッチ調整（細切れ対策）")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker("送信ピッチ（Lv）", selection: $voiceManager.bleIntervalLevel) {
+                            ForEach(1...8, id: \.self) { level in
+                                Text("レベル \(level)").tag(level)
+                            }
+                        }
+                        .pickerStyle(MenuPickerStyle()) // すっきりしたメニュー形式
+                        
+                        // 現在の具体的なマイクロ秒（μs）をリアルタイムに計算して表示する親切設計
+                        HStack {
+                            Text("現在のウエイト:")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                            Spacer()
+                            if voiceManager.isStereoMode {
+                                Text("\(voiceManager.bleIntervalLevel * 1250) μs (ステレオ)")
+                                    .font(.caption.monospaced())
+                                    .foregroundColor(.purple)
+                            } else {
+                                Text("\((voiceManager.bleIntervalLevel * 1250) * 2) μs (モノラル)")
+                                    .font(.caption.monospaced())
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                // --- キャラクターボイス設定 ---
+                Section(header: Text("キャラクターボイス")) {
+                    // ピッチ（声の高さ）調整
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack {
+                            Text("声のピッチ（高さ）")
+                            Spacer()
+                            Text(String(format: "%.1f x", voiceManager.pitchRate))
+                                .font(.system(.body, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                        Slider(value: $voiceManager.pitchRate, in: 0.5...2.0, step: 0.1)
+                    }
+                    
+                    // iPhone内部の日本語システム音声選択
+                    Picker("声の種類", selection: $voiceManager.selectedVoiceIdentifier) {
+                        if voiceManager.availableVoices.isEmpty {
+                            Text("標準の日本語音声").tag("")
+                        } else {
+                            ForEach(voiceManager.availableVoices, id: \.identifier) { voice in
+                                Text(voice.name).tag(voice.identifier)
+                            }
+                        }
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                }
+                
+                // --- AIキャラクター挙動変更 ---
+                Section(header: Text("AIキャラクターモード")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker("AIモード", selection: $voiceManager.aiMode) {
+                            ForEach(aiModes, id: \.self) { mode in
+                                Text(mode).tag(mode)
+                            }
+                        }
+                        .pickerStyle(SegmentedPickerStyle())
+                        
+                        Text(getAiModeDescription(mode: voiceManager.aiMode))
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
+                }
             }
             .navigationTitle("システム設定")
             .toolbar {
@@ -37,6 +138,16 @@ struct SettingsView: View {
                     Button("完了") { dismiss() }
                 }
             }
+        }
+    }
+    
+    // AIモードごとの補足テキスト
+    private func getAiModeDescription(mode: String) -> String {
+        switch mode {
+        case "ツンデレ": return "語尾に「、なんだからね！」が自動で追加されます。"
+        case "ロボット風": return "語尾に「。ピッ。ポッ。」が追加され、メカっぽくなります。"
+        case "やさしい": return "文頭に「えっとね、」が追加され、おっとりした口調になります。"
+        default: return "標準の文章のままおしゃべりします。"
         }
     }
 }
@@ -49,6 +160,7 @@ struct ContentView: View {
     @State private var isPremiumAI: Bool = false
     @State private var apiKey: String = ""
     @State private var isShowingSettings: Bool = false
+    @State private var debugSpeechText: String = "おはよう"
     
     var body: some View {
         NavigationView {
@@ -138,6 +250,43 @@ struct ContentView: View {
                     }
                     .padding(.vertical, 8)
                 }
+                if bleManager.isConnected {
+                    VStack(alignment: .leading, spacing: 5) {
+                        
+                        HStack(spacing: 8) {
+                            // ✍️ 好きな文章を打ち込める入力欄
+                            TextField("テストする文章を入力", text: $debugSpeechText)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .submitLabel(.done)
+                            
+                            // ▶️ 入力欄の文字列を直撃でTTSストリーミングするボタン
+                            Button(action: {
+                                // 通常のAI処理（工程1〜4）を完全にスキップして、このテキストを直接再生！
+                                voiceManager.speakAndStream(text: debugSpeechText)
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "play.fill")
+                                    Text("再生")
+                                }
+                                .font(.subheadline)
+                                .bold()
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(debugSpeechText.isEmpty ? Color.gray : Color.blue)
+                                .cornerRadius(8)
+                        }
+                        // 再生中や録音中、または文字が空の時はボタンを押せなくする
+                        .disabled(voiceManager.isSpeaking || voiceManager.isRecording || debugSpeechText.isEmpty)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color(.systemGray6))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 15) // 画面全体の左右マージンに合わせる
+                }
+                
                 Spacer()
                 
                 // 🎙️ 音声対話・プッシュトークボタン
@@ -162,7 +311,7 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $isShowingSettings) {
-                SettingsView(isPremiumAI: $isPremiumAI, apiKey: $apiKey)
+                SettingsView(isPremiumAI: $isPremiumAI, apiKey: $apiKey,voiceManager: voiceManager)
             }
             .onAppear {
                 voiceManager.setup(bleManager: bleManager)

@@ -1,6 +1,6 @@
 // =========================================================================
 // File: iOSApp/VoicePipelineManager.swift
-// Description: iRobapp-mini用 音声認識(STT) ＆ リアルタイム音声ストリーミング(TTS)
+// Description: iRobapp-mini用 音声認識(STT) ＆ リアルタイム音声ストリーミング(TTS) [設定機能連動版]
 // =========================================================================
 
 import Foundation
@@ -26,6 +26,15 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
     @Published var isRecording: Bool = false
     @Published var isSpeaking: Bool = false
     
+    //  設定画面UIから操作するためのコントロール用変数群
+    @Published var isStereoMode: Bool = true       // ステレオ切り替え
+    @Published var volumeMultiplier: Double = 32767.0 // ボリューム（最大60000程度。デフォルトは標準値）
+    @Published var pitchRate: Float = 1.0          // 音のピッチ倍率（0.5 〜 2.0）
+    @Published var selectedVoiceIdentifier: String = "" // 選択された声の識別コード
+    @Published var aiMode: String = "ノーマル"       // AIのキャラクターモード
+    @Published var availableVoices: [AVSpeechSynthesisVoice] = [] // iPhoneが持っている日本語音声リスト
+    @Published var bleIntervalLevel: Int = 2
+    
     var onSpeechRecognized: ((String) -> Void)?
     
     func setup(bleManager: BLEManager) {
@@ -35,10 +44,21 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
         SFSpeechRecognizer.requestAuthorization { status in
             print(">>> 音声認識権限ステータス: \(status)")
         }
+        
+        // 起動時にiPhone内に登録されている日本語の音声一覧を取得する
+        fetchAvailableVoices()
+    }
+    
+    // 日本語の話者リストを取得して初期選択するメソッド
+    func fetchAvailableVoices() {
+        let allVoices = AVSpeechSynthesisVoice.speechVoices()
+        self.availableVoices = allVoices.filter { $0.language == "ja-JP" }
+        if let firstVoice = self.availableVoices.first {
+            self.selectedVoiceIdentifier = firstVoice.identifier
+        }
     }
     
     func startRecording() {
-        // 録音を始める前に、セッションを録音モード（PlayAndRecord）に戻す
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
@@ -96,24 +116,45 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
             return
         }
         
-        aiResponseText = text
+        var processedText = text
+        switch aiMode {
+        case "ツンデレ":
+            processedText = text + "、なんだからね！"
+        case "ロボット風":
+            processedText = text + "。ピッ。ポッ。"
+        case "やさしい":
+            processedText = "えっとね、" + text + "だよ。"
+        default:
+            processedText = text
+        }
+        
+        aiResponseText = processedText
         isSpeaking = true
         tempAudioBuffers.removeAll()
         
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
+        let utterance = AVSpeechUtterance(string: processedText)
+        
+        // 設定画面で選ばれた声のIDを割り当てる
+        if let specificVoice = AVSpeechSynthesisVoice(identifier: selectedVoiceIdentifier) {
+            utterance.voice = specificVoice
+        } else {
+            utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
+        }
+        
+        // 設定画面から指定されたピッチ倍率（0.5〜2.0）をセット
+        utterance.pitchMultiplier = pitchRate
         utterance.rate = 0.5
         
-        // 🌟 1. コールバック内では遅延を入れず、バッファを貯めるだけにする
+        //  1. コールバック内では遅延を入れず、バッファを貯めるだけにする
         synthesizer.write(utterance) { [weak self] (buffer: AVAudioBuffer) in
             guard let self = self, let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
             self.tempAudioBuffers.append(pcmBuffer)
         }
         
-        // 🌟 2. 音声生成が終わるのを待ってから、別スレッドで安全に送信する
-        let delayTime = Double(text.count) * 0.2 + 0.6
+        //  2. 音声生成が終わるのを待ってから、別スレッドで安全に送信する
+        let delayTime = Double(processedText.count) * 0.2 + 0.6
         DispatchQueue.main.asyncAfter(deadline: .now() + delayTime) { [weak self] in
-            // 🌟 ベースとなるselfを安全にアンラップ
+            //  ベースとなるselfを安全にアンラップ
             guard let self = self else { return }
             
             if self.tempAudioBuffers.isEmpty {
@@ -126,7 +167,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
                 self.processAndSendBuffers()
             }
             
-            // 🌟 UIスレッド（メイン）に戻してフラグをオフにする
+            //  UIスレッド（メイン）に戻してフラグをオフにする
             DispatchQueue.main.async {
                 self.isSpeaking = false
             }
@@ -140,21 +181,22 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
             guard let floatChannels = pcmBuffer.floatChannelData else { continue }
             let frameCount = Int(pcmBuffer.frameLength)
             
-            // 🌟明確に0番目のモノラルchポインタを抽出
+            // 明確に0番目のモノラルchポインタを抽出
             let channelData = floatChannels[0]
-            
+
             // iOSが内部生成した元のサンプリングレート（22050Hz等）を取得
             let sourceSampleRate = pcmBuffer.format.sampleRate
-            let targetSampleRate: Double = 16000.0 // 🎯マイコン側に完全同期
+            let targetSampleRate: Double = 16000.0
             
             var int16Samples = [Int16]()
-            // 変換後の予測サイズで領域をあらかじめ確保
-            int16Samples.reserveCapacity(Int(Double(frameCount) * (targetSampleRate / sourceSampleRate)))
+            // 変換後の予測サイズで領域をあらかじめ確保（ステレオの場合は最大2倍になるため領域を広く取る）
+            let capacityMultiplier = isStereoMode ? 2 : 1
+            int16Samples.reserveCapacity(Int(Double(frameCount) * (targetSampleRate / sourceSampleRate)) * capacityMultiplier)
             
             let step = sourceSampleRate / targetSampleRate
             var sourceIndex = 0.0
             
-            // 🌟 【ここを最適化】1chのデータを安全に16kHzへ直撃ダウンサンプリング
+            // 1chのデータを安全に16kHzへ直撃ダウンサンプリング
             while sourceIndex < Double(frameCount) {
                 let idx = Int(sourceIndex)
                 if idx >= frameCount { break }
@@ -162,13 +204,21 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
                 let floatSample = channelData[idx]
                 
                 // 🛠️ 【音量 ＆ 音割れガード倍率】
-                // ハンダ全廃構成のスピーカーで最もクリアに鳴る「120.0」に固定します
-                let volumeMultiplier = 120.0
-                let rawSample = Double(floatSample) * volumeMultiplier
-                
+                // 画面スライダーから取得した変数を適用
+                let boostFactor = self.volumeMultiplier / 32767.0
+                let rawSample = Double(floatSample) * self.volumeMultiplier * max(1.0, boostFactor)
+
                 let int16Sample = Int16(max(-32768, min(32767, rawSample)))
-                int16Samples.append(int16Sample)
                 
+                // 【モノラル / ステレオ切り替え機能の反映】
+                if self.isStereoMode {
+                    // ステレオモード：LとRのチャンネルへ交互に同じデータを連続して2個詰める
+                    int16Samples.append(int16Sample) // L
+                    int16Samples.append(int16Sample) // R
+                } else {
+                    // モノラルモード：元の通り1個だけ詰める
+                    int16Samples.append(int16Sample) // モノラル
+                }
                 sourceIndex += step
             }
             
@@ -201,13 +251,22 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
             }
                 
             offset += chunkSize
-            // 16kHzストリームに対して、180バイト(約5.6ms分の音声)を「4msウェイト」で
-            // 送信バッファが絶対に枯渇しない理想の間隔でストリーミングします
-            usleep(4000)
+            
+            // OS（iPhone）のBluetooth通信の仕様上、これらのウエイト値は
+            //「1250マイクロ秒（1.25ms）」の倍数に設定する
+            // ステレオ時はデータが2倍なので、モノラルのウエイトを半分にして超高速で送り込む。
+            let baseInterval = self.bleIntervalLevel * 1250
+            
+            if self.isStereoMode {
+                // ステレオの場合：設定値 ✕ 1250
+                usleep(useconds_t(baseInterval))
+            } else {
+                // モノラルの場合：（設定値 ✕ 1250）✕ 2
+                usleep(useconds_t(baseInterval * 2))
+            }
         }
             
         print("✅ [ストリーミング送信完了]")
-        
         DispatchQueue.main.async { [weak self] in
             self?.isSpeaking = false
         }

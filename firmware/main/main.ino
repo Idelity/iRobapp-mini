@@ -109,8 +109,8 @@ void initI2SAudio() {
     .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
     .sample_rate = SAMPLE_RATE,
     .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
-    // 🎯 起動音が綺麗に鳴る元の「モノラル専用モード」に戻して回路を安定させます
-    .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT, 
+    .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT, 
+    //.channel_format = I2S_CHANNEL_FMT_ALL_LEFT,     
     .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_STAND_I2S),
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
     .dma_buf_count = 8,
@@ -144,7 +144,7 @@ void playSystemBootSound() {
   // 1音目：ピピッの「ピ」（高いレの音：1174Hz）
   for (int i = 0; i < note_length; i++) {
     float angle = (2.0 * PI * 1174.0 * i) / SAMPLE_RATE;
-    sound_buffer[i] = (int16_t)(sin(angle) * 100); 
+    sound_buffer[i] = (int16_t)(sin(angle) * 10000); 
   }
   i2s_write(I2S_NUM_0, (const char*)sound_buffer, note_length * sizeof(int16_t), &bytes_written, portMAX_DELAY);
   delay(50); 
@@ -152,7 +152,7 @@ void playSystemBootSound() {
   // 2音目：ピピッの「ッピ」（さらに高いラの音：1760Hz）
   for (int i = 0; i < note_length; i++) {
     float angle = (2.0 * PI * 1760.0 * i) / SAMPLE_RATE;
-    sound_buffer[i] = (int16_t)(sin(angle) * 100); 
+    sound_buffer[i] = (int16_t)(sin(angle) * 10000); 
   }
   i2s_write(I2S_NUM_0, (const char*)sound_buffer, note_length * sizeof(int16_t), &bytes_written, portMAX_DELAY);
   i2s_zero_dma_buffer(I2S_NUM_0); 
@@ -210,23 +210,24 @@ class VoiceCallbacks: public BLECharacteristicCallbacks {
         // iPhoneから送られてきた生のバイナリデータと正確な長さをそのまま取得
         uint8_t* rawData = pCharacteristic->getData();
         size_t dataLength = pCharacteristic->getLength();
+
+        const int16_t* audioSamples = (const int16_t*)rawData;
         
         if (dataLength > 0 && rawData != nullptr) {
             lastInteractionTime = millis();
             isSleepMode = false;
             lastAudioPacketTime = millis();
 
-            // 🌟話が始まった瞬間だけアンプを起動
+            // 話が始まった瞬間だけアンプを起動
             if (!isAudioPlaying) {
                 i2s_start(I2S_NUM_0);
                 isAudioPlaying = true;
             }
 
-            // 🌟【フリーズ・無音原因の完全解消】
             // データの長さ（180バイト未満の端数パケットなど）を一切気にせず、
             // 届いたバイナリをそのまま遅延ゼロ（非ブロック）でI2Sへ直撃書き込みします！
             size_t bytes_written;
-            i2s_write(I2S_NUM_0, (const char*)rawData, dataLength, &bytes_written, 0);
+            i2s_write(I2S_NUM_0, (const char*)audioSamples, dataLength, &bytes_written, portMAX_DELAY);
 
             if (!isTailWaggingForVoice) {
                 isTailWaggingForVoice = true;
@@ -272,12 +273,12 @@ void drawEye() {
 
   int leftEyeX = 60;   
   int rightEyeX = 180; 
-  int baseEyeY = 120;  // 🌟縦の中心は120
+  int baseEyeY = 120;  // 縦の中心は120
 
   int customWhiteRadius = 38; 
   int customEyeRadius = 18;   
 
-  // 🌟【最重要修正】横（X）だけでなく、縦（Y）の動きにも0.4倍の可愛いブレーキをかける！
+  // 横（X）だけでなく、縦（Y）の動きにも0.4倍の可愛いブレーキをかける！
   // これにより、iPhoneからの「上下」の指示でも黒目が白目からはみ出さなくなります
   float offsetX = (eyeX - 120.0f) * 0.4f;
   float offsetY = (eyeY - 120.0f) * 0.4f; // 🎯画面中心(120)からのズレを0.4倍に減衰
