@@ -85,16 +85,56 @@ cd iRobapp-mini
 
 ---
 
-### ⚙️ [手順3-3] CocoaPodsのインストール
+### ⚙️ [手順3-3] Homebrewのインストール
 すでにインストール済みの場合は手順3−4を実施してください。
 
 1. Macの「ターミナル」アプリを開き、以下のコマンドを貼り付けてEnterを押してください。
 
->Macのパスワード（画面ロックを解除する時のもの）を求められたら入力してEnterを押します。（※入力中、画面に文字やホシ * は表示されませんが、内部で入力されているのでそのまま打って大丈夫です）
+```bash
+/bin/bash -c "$(curl -fsSL https://githubusercontent.com)"
+```
+
+※途中で「Press ENTER to continue...」と出たらEnterキーを押します。
+
+※パスワードを求められたら、Macの画面ロック解除用のパスワードを入力してEnterを押します（文字は非表示です）。
+
+インストールの最後に、画面に「Next steps:」という案内が表示されます。
+
+そこに書かれている以下の2つのコマンドを、1行ずつ順番にコピーして実行します。
 
 ```bash
-sudo gem install cocoapods
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
 ```
+```bash
+eval "$(/opt/homebrew/bin/brew shellenv)"
+```
+
+2. 最後に、正しく入ったかをテストするために以下のコマンドを打ちます。
+
+```bash
+brew --version
+```
+
+---
+
+### ⚙️ [手順3-4] CocoaPodsのインストール
+すでにインストール済みの場合は手順3−4を実施してください。
+
+1. Macの「ターミナル」アプリを開き、以下のコマンドを貼り付けてEnterを押してください。
+
+```bash
+brew install cocoapods
+```
+
+>もし「command not found: brew」と怒られた場合、MacにHomebrewが入っていないので、代わりに以下のコマンドを貼り付けてEnterを押し、インストールを完了させてから上の brew install cocoapods を実行してください。
+>
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+```
+
+
 2. インストールが成功したか確認する。以下のコマンドを貼り付けてEnterを押してください。
 
 ```bash
