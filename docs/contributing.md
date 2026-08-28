@@ -92,9 +92,9 @@ Finder内に置いただけではアプリのビルドパックに含まれな�
 2. MacのFinderで、先ほど内側フォルダに保存した `gemma-2b-it-cpu-int4.bin` を掴みます。
 3. Xcodeの左側ツリー（ファイル一覧エリア）にある、**`ContentView.swift` のすぐ真下あたり**に向かってマウスでドラッグ＆ドロップします。
 4. 放り込んだ瞬間にXcodeが表示するポップアップ設定画面（Choose options for adding these files）にて、**以下の3つのチェックボックスを【必ず】以下通りに設定してください。**
-   * [x] **`Copy items if needed`** ➔ **チェックを入れる（ON）**
-   * (○) **`Create groups`** ➔ **これを選択する**
-   * [x] **`Add to targets`** ➔ リスト内の **`iRobappMiniController` に必ずチェックを入れる（ON）**
+   * [ｘ] **`Copy items if needed`** ➔ **チェックを入れる（ON）**
+   * （○） **`Create groups`** ➔ **これを選択する**
+   * [ｘ] **`Add to targets`** ➔ リスト内の **`iRobappMiniController` に必ずチェックを入れる（ON）**
 5. 右下の **[Finish]** ボタンを押して登録を完了します。
 
 > 💡 **【先輩開発者からのアドバイス】**
