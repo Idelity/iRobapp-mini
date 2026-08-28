@@ -89,7 +89,7 @@ cd iRobapp-mini
 Finder内に置いただけではアプリのビルドパックに含まれないため、以下の手順でXcodeへ「アセット（アプリの素材）」として認識させます。
 
 1. `iRobappMiniController.xcodeproj` をダブルクリックしてXcodeを起動します。
-2. MacのFinderで、先ほど内側フォルダに保存した `gemma-2b-it-cpu-int4.bin` を掴みます。
+2. MacのFinderで、先ほど内側フォルダに保存した `gemma-2b.bin` を掴みます。
 3. Xcodeの左側ツリー（ファイル一覧エリア）にある、**`ContentView.swift` のすぐ真下あたり**に向かってマウスでドラッグ＆ドロップします。
 4. 放り込んだ瞬間にXcodeが表示するポップアップ設定画面（Choose options for adding these files）にて、**以下の3つのチェックボックスを【必ず】以下通りに設定してください。**
    * [ｘ] **`Copy items if needed`** ➔ **チェックを入れる（ON）**
