@@ -91,7 +91,7 @@ cd iRobapp-mini
 1. Macの「ターミナル」アプリを開き、以下のコマンドを貼り付けてEnterを押してください。
 
 ```bash
-/bin/bash -c "$(curl -fsSL https://githubusercontent.com)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
 ※途中で「Press ENTER to continue...」と出たらEnterキーを押します。
@@ -125,15 +125,6 @@ brew --version
 ```bash
 brew install cocoapods
 ```
-
->もし「command not found: brew」と怒られた場合、MacにHomebrewが入っていないので、代わりに以下のコマンドを貼り付けてEnterを押し、インストールを完了させてから上の brew install cocoapods を実行してください。
->
-
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-```
-
 
 2. インストールが成功したか確認する。以下のコマンドを貼り付けてEnterを押してください。
 
