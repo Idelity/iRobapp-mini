@@ -102,6 +102,39 @@ Finder内に置いただけではアプリのビルドパックに含まれな�
 
 ---
 
+### ⚙️ [手順3-4] 依存ライブラリのインストールとワークスペースの起動（超重要）
+オンデバイスAI（Gemma-2B）を制御するGoogleの推論エンジン `MediaPipeTasksGenAI` をプロジェクトに導入し、開発環境を確定させる最終ステップです。
+
+1. Xcodeを一度完全に終了します。
+2. Macの「ターミナル」アプリを開き、iOSアプリのプロジェクトフォルダへ移動します。
+
+```bash
+cd ~/Documents/iRobapp-mini/iOSApp/iRobappMiniController
+```
+
+3. 以下のコマンドを実行して、AI関連ライブラリの自動ダウンロードと組み込みを行います。
+
+```bash
+pod install
+```
+
+4. インストール完了後は、開発開始の手順が変更になります。
+
+**⚠️ 超重要ルール⚠️ **
+
+- ❌【絶対に使用禁止】iRobappMiniController.xcodeproj （古いファイル）
++ ⭕️【今後の起動用】  iRobappMiniController.xcworkspace（新ファイル：白いアイコン）
+
+```
+これからは、必ず新しく生成された「iRobappMiniController.xcworkspace」を
+ダブルクリックしてXcodeを起動してください。
+古い .xcodeproj の方を開くと、ライブラリが一切読み込めず
+No such module 'MediaPipeTasksGenai' エラーで開発がストップします。
+```
+
+
+---
+
 ## 💾 ステップ4：ソースコードのアップロード（Git push）
 
 xcodeの修正や設定変更を終えたら「ターミナル」アプリを開き、次のコマンドを実施する。
