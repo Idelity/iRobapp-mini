@@ -85,40 +85,19 @@ cd iRobapp-mini
 
 ---
 
-### ⚙️ [手順3-3] Homebrewのインストール
+### ⚙️ [手順3-3] Xcodeへの LiteRTLM 導入手順 (SPM)
 すでにインストール済みの場合は手順3−4を実施してください。
 
-1. Macの「ターミナル」アプリを開き、以下のコマンドを貼り付けてEnterを押してください。
+1. Xcodeでプロジェクトを開き、メニューの File ＞ Add Package Dependencies... を選択します。
 
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
+2. 検索窓に公式リポジトリのURL https://github.com/google-ai-edge/LiteRT-LM を入力します。
 
-※途中で「Press ENTER to continue...」と出たらEnterキーを押します。
+3. LiteRTLM ライブラリを選択し、アプリのターゲットに追加してインストールを完了します。
 
-※パスワードを求められたら、Macの画面ロック解除用のパスワードを入力してEnterを押します（文字は非表示です）。
-
-インストールの最後に、画面に「Next steps:」という案内が表示されます。
-
-そこに書かれている以下の2つのコマンドを、1行ずつ順番にコピーして実行します。
-
-```bash
-echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
-```
-```bash
-eval "$(/opt/homebrew/bin/brew shellenv)"
-```
-
-2. 最後に、正しく入ったかをテストするために以下のコマンドを打ちます。
-
-```bash
-brew --version
-```
 
 ---
 
 ### ⚙️ [手順3-4] CocoaPodsのインストール
-すでにインストール済みの場合は手順3−5を実施してください。
 
 1. Macの「ターミナル」アプリを開き、以下のコマンドを貼り付けてEnterを押してください。
 
@@ -132,39 +111,6 @@ brew install cocoapods
 pod --version
 ```
 >画面に 1.15.2（またはそれに近い数字）とバージョンが表示されれば、導入完了です！
-
-
----
-
-### ⚙️ [手順3-5] 依存ライブラリのインストールとワークスペースの起動（超重要）
-オンデバイスAI（Gemma-2B）を制御するGoogleの推論エンジン `MediaPipeTasksGenAI` をプロジェクトに導入し、開発環境を確定させる最終ステップです。
-
-1. Xcodeを一度完全に終了します。
-2. Macの「ターミナル」アプリを開き、iOSアプリのプロジェクトフォルダへ移動します。
-
-```bash
-cd ~/Documents/iRobapp-mini/iOSApp/iRobappMiniController
-```
-
-3. 以下のコマンドを実行して、AI関連ライブラリの自動ダウンロードと組み込みを行います。
-
-```bash
-pod install
-```
-
-4. インストール完了後は、開発開始の手順が変更になります。
-
-**⚠️ 超重要ルール⚠️ **
-
-- ❌【絶対に使用禁止】iRobappMiniController.xcodeproj （古いファイル）
-+ ⭕️【今後の起動用】  iRobappMiniController.xcworkspace（新ファイル：白いアイコン）
-
-```
-これからは、必ず新しく生成された「iRobappMiniController.xcworkspace」を
-ダブルクリックしてXcodeを起動してください。
-古い .xcodeproj の方を開くと、ライブラリが一切読み込めず
-No such module 'MediaPipeTasksGenai' エラーで開発がストップします。
-```
 
 
 ---
