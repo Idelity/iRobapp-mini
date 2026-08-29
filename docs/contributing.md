@@ -163,8 +163,10 @@ git pull origin main
 git pull --rebase origin main
 git status
 git clean -fdx
-git add iOSApp/iRobappMiniController/iRobappMiniController/
+git add iOSApp/iRobappMiniController/
 git add firmware/main/main.ino
 git commit -m "feat: 設定画面の拡張＆TTSて入力テキストの追加"
 git push origin main
+git checkout main 
+git checkout a25f996
 ```
