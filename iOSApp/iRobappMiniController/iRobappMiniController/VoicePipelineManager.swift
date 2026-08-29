@@ -8,7 +8,7 @@ import Speech
 import AVFoundation
 import Combine
 
-class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelegate {
+class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelegate, AVSpeechSynthesizerDelegate {
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "ja-JP"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
@@ -34,7 +34,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
     @Published var aiMode: String = "ノーマル"       // AIのキャラクターモード
     @Published var availableVoices: [AVSpeechSynthesisVoice] = [] // iPhoneが持っている日本語音声リスト
     @Published var bleIntervalLevel: Int = 2
-    
+
     var onSpeechRecognized: ((String) -> Void)?
     
     func setup(bleManager: BLEManager) {
@@ -110,6 +110,11 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
         isRecording = false
     }
     
+    override init() {
+        super.init()
+        synthesizer.delegate = self  // ← 追加
+    }
+    
     func speakAndStream(text: String) {
         guard let ble = bleManager, ble.isConnected else {
             print(">>> ロボットが未接続のためストリーミングできません")
@@ -118,7 +123,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
         // 🔧 セッション設定を再度確認
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement,
+            try session.setCategory(.playAndRecord, mode: .default,
                                     options: [.defaultToSpeaker, .duckOthers])
             try session.setActive(true)
         } catch {
@@ -160,29 +165,18 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
             self.tempAudioBuffers.append(pcmBuffer)
         }
         
-        //  2. 音声生成が終わるのを待ってから、別スレッドで安全に送信する
-        let delayTime = Double(processedText.count) * 0.2 + 0.6
-        DispatchQueue.main.asyncAfter(deadline: .now() + delayTime) { [weak self] in
-            //  ベースとなるselfを安全にアンラップ
-            guard let self = self else { return }
-            
-            if self.tempAudioBuffers.isEmpty {
-                self.isSpeaking = false
-                return
-            }
-            
-            // バックグラウンドでデータを一括処理して送信
-            DispatchQueue.global(qos: .userInitiated).async {
-                self.processAndSendBuffers()
-            }
-            
-            //  UIスレッド（メイン）に戻してフラグをオフにする
-            DispatchQueue.main.async {
-                self.isSpeaking = false
-            }
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        // バッファ取得が完了したら送信処理を開始
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.processAndSendBuffers()
+        }
+        DispatchQueue.main.async { [weak self] in
+            self?.isSpeaking = false
         }
     }
-    
+
     private func processAndSendBuffers() {
         var allConvertedData = Data()
             
