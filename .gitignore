@@ -266,3 +266,6 @@ CapsuleApp.xcresult
 *.FCStd.bak
 
 **/models/gemma-2b-it-gpu-int4.bin
+# --- Podsフォルダをどの階層にあっても丸ごと完全に対象外にする ---
+**/Pods/
+
