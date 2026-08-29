@@ -83,6 +83,7 @@ cd iRobapp-mini
             ├── 📄 VoicePipelineManager.swift
             └── 📄 ContentView.swift
 ```
+※「.gitignore」に「**/Models/gemma-2b-it-gpu-int4.bin」があることを確認する。（存在しない場合は追加してpullしておく）
 
 ---
 
