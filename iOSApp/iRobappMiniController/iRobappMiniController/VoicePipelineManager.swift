@@ -61,8 +61,8 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
     func startRecording() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
-            try session.setActive(true)
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .duckOthers])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             print("❌ 録音セッションの起動に失敗: \(error)")
         }
@@ -114,6 +114,15 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
         guard let ble = bleManager, ble.isConnected else {
             print(">>> ロボットが未接続のためストリーミングできません")
             return
+        }
+        // 🔧 セッション設定を再度確認
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .measurement,
+                                    options: [.defaultToSpeaker, .duckOthers])
+            try session.setActive(true)
+        } catch {
+            print("❌ オーディオセッション設定エラー: \(error)")
         }
         
         var processedText = text
