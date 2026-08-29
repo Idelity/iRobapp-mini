@@ -265,3 +265,4 @@ CapsuleApp.xcresult
 # FreeCADの自動バックアップファイル
 *.FCStd.bak
 
+**/model/gemma-2b-it-gpu-int4.bin
