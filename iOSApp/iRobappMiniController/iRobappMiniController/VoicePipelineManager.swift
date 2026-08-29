@@ -37,6 +37,11 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
 
     var onSpeechRecognized: ((String) -> Void)?
     
+    override init() {
+        super.init()
+        synthesizer.delegate = self  // ← 追加
+    }
+    
     func setup(bleManager: BLEManager) {
         self.bleManager = bleManager
         self.speechRecognizer?.delegate = self
@@ -108,11 +113,6 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
         recognitionRequest?.endAudio()
         recognitionTask?.cancel()
         isRecording = false
-    }
-    
-    override init() {
-        super.init()
-        synthesizer.delegate = self  // ← 追加
     }
     
     func speakAndStream(text: String) {
