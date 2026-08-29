@@ -34,12 +34,12 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
     @Published var aiMode: String = "ノーマル"       // AIのキャラクターモード
     @Published var availableVoices: [AVSpeechSynthesisVoice] = [] // iPhoneが持っている日本語音声リスト
     @Published var bleIntervalLevel: Int = 2
-
+    
     var onSpeechRecognized: ((String) -> Void)?
     
     override init() {
         super.init()
-        synthesizer.delegate = self  // ← 追加
+        synthesizer.delegate = self
     }
     
     func setup(bleManager: BLEManager) {
@@ -123,7 +123,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
         // 🔧 セッション設定を再度確認
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .default,
+            try session.setCategory(.playAndRecord, mode: .measurement,
                                     options: [.defaultToSpeaker, .duckOthers])
             try session.setActive(true)
         } catch {
@@ -164,11 +164,10 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
             guard let self = self, let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
             self.tempAudioBuffers.append(pcmBuffer)
         }
-        
     }
-
+    
+    // バッファ取得が完了したら送信処理を開始
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        // バッファ取得が完了したら送信処理を開始
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.processAndSendBuffers()
         }
@@ -176,7 +175,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
             self?.isSpeaking = false
         }
     }
-
+    
     private func processAndSendBuffers() {
         var allConvertedData = Data()
             
