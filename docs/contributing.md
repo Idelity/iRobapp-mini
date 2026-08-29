@@ -77,7 +77,7 @@ cd iRobapp-mini
     └── 📁 iRobappMiniController/ (外箱フォルダ)
         ├── 📄 iRobappMiniController.xcodeproj
         ├── 📁 Models/ 
-        ├   └── 📄 gemma-2b-it-gpu-int4.bin  <-- ★ここへ直接保存する！
+        │   └── 📄 gemma-2b-it-gpu-int4.bin  <-- ★ここへ直接保存する！
         └── 📁 iRobappMiniController/ (内側：コードフォルダ)
             ├── 📄 BLEManager.swift
             ├── 📄 VoicePipelineManager.swift
