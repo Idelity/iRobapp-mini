@@ -76,11 +76,12 @@ cd iRobapp-mini
 └── 📁 iOSApp/
     └── 📁 iRobappMiniController/ (外箱フォルダ)
         ├── 📄 iRobappMiniController.xcodeproj
+        ├── 📁 Models/ 
+        ├   └── 📄 gemma-2b-it-gpu-int4.bin  <-- ★ここへ直接保存する！
         └── 📁 iRobappMiniController/ (内側：コードフォルダ)
             ├── 📄 BLEManager.swift
             ├── 📄 VoicePipelineManager.swift
-            ├── 📄 ContentView.swift
-            └── 📄 gemma-2b-it-gpu-int4.bin  <-- ★ここへ直接保存する！
+            └── 📄 ContentView.swift
 ```
 
 ---
@@ -156,4 +157,14 @@ git push origin main
 *   [Conventional Commits 公式仕様書（日本語）](https://conventionalcommits.org)
 *   [Conventional Commits クイックチートシート（Qiita）](https://qiita.com)
 
-
+＜メモ＞
+```bash
+git pull origin main
+git pull --rebase origin main
+git status
+git clean -fdx
+git add iOSApp/iRobappMiniController/iRobappMiniController/
+git add firmware/main/main.ino
+git commit -m "feat: 設定画面の拡張＆TTSて入力テキストの追加"
+git push origin main
+```
