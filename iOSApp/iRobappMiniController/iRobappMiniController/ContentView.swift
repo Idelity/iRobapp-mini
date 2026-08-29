@@ -1,11 +1,12 @@
 // =========================================================================
 // File: iOSApp/iRobappMiniController/iRobappMiniController/ContentView.swift
-// Description: iRobapp-mini用 統合コントロール・AI音声会話メイン画面UI（完全修復版）
+// Description: iRobapp-mini用 統合コントロール・AI音声会話メイン画面UI（完全修復版・前半）
 // =========================================================================
 
 import SwiftUI
 import CoreBluetooth
 import AVFAudio
+
 // ⚙️ 1. 設定画面専用のパーツ
 struct SettingsView: View {
     @Binding var isPremiumAI: Bool
@@ -140,7 +141,7 @@ struct SettingsView: View {
             }
         }
     }
-    
+
     // AIモードごとの補足テキスト
     private func getAiModeDescription(mode: String) -> String {
         switch mode {
@@ -151,11 +152,13 @@ struct SettingsView: View {
         }
     }
 }
-
 // 📱 2. メイン画面の本丸
 struct ContentView: View {
     @StateObject private var bleManager = BLEManager()
     @StateObject private var voiceManager = VoicePipelineManager()
+    
+    // 🟩 修復：GemmaAIManagerを画面の最上部で常駐管理（起動時に1回だけロードされる）
+    @StateObject private var gemmaManager = GemmaAIManager()
     
     @State private var isPremiumAI: Bool = false
     @State private var apiKey: String = ""
@@ -172,7 +175,13 @@ struct ContentView: View {
                         .frame(width: 12, height: 12)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(bleManager.connectedDeviceName).font(.subheadline).fontWeight(.bold)
-                        Text(bleManager.isConnected ? "BLE安定接続中" : "ロボットを探索中...").font(.caption).foregroundColor(.gray)
+                        
+                        // 🟩 修正：BLEの接続状態に加えて、Gemmaのロード状態もリアルタイムに表示
+                        if gemmaManager.isModelLoading {
+                            Text("🧠 ローカルAIの脳みそをロード中...").font(.caption).foregroundColor(.orange)
+                        } else {
+                            Text(bleManager.isConnected ? "BLE安定接続中（AI準備OK）" : "ロボットを探索中...").font(.caption).foregroundColor(.gray)
+                        }
                     }
                     Spacer()
                     if bleManager.isConnected {
@@ -207,7 +216,6 @@ struct ContentView: View {
                         
                         if !voiceManager.aiResponseText.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
-                                // 💡【完全修復】Xcodeの頭脳パニックを防ぐため、シンプルなif文に分解！
                                 if isPremiumAI {
                                     Text("AI (有料版)").font(.caption2).foregroundColor(.gray)
                                 } else {
@@ -223,12 +231,10 @@ struct ContentView: View {
                 // 👁️ 視線手動コントロール（上下左右・十字フル対応版）
                 if bleManager.isConnected {
                     VStack(spacing: 8) {
-                        // 1段目：上を向くボタン
                         Button("上を向く") {
                             bleManager.sendEyePosition(xValue: 120, yValue: 60)
                         }.buttonStyle(.bordered)
                         
-                        // 2段目：左・正面・右を横一列に綺麗に並べる
                         HStack(spacing: 12) {
                             Button("← 左向く") {
                                 bleManager.sendEyePosition(xValue: 60, yValue: 120)
@@ -236,32 +242,28 @@ struct ContentView: View {
                             
                             Button(" 正面 ") {
                                 bleManager.sendEyePosition(xValue: 120, yValue: 120)
-                            }.buttonStyle(.borderedProminent) // 🎯正面は分かりやすく目立たせる
+                            }.buttonStyle(.borderedProminent)
                             
                             Button("右向く →") {
                                 bleManager.sendEyePosition(xValue: 180, yValue: 120)
                             }.buttonStyle(.bordered)
                         }
                         
-                        // 3段目：下を向くボタン
                         Button("下を向く") {
                             bleManager.sendEyePosition(xValue: 120, yValue: 180)
                         }.buttonStyle(.bordered)
                     }
                     .padding(.vertical, 8)
                 }
+                
                 if bleManager.isConnected {
                     VStack(alignment: .leading, spacing: 5) {
-                        
                         HStack(spacing: 8) {
-                            // ✍️ 好きな文章を打ち込める入力欄
                             TextField("テストする文章を入力", text: $debugSpeechText)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
                                 .submitLabel(.done)
                             
-                            // ▶️ 入力欄の文字列を直撃でTTSストリーミングするボタン
                             Button(action: {
-                                // 通常のAI処理（工程1〜4）を完全にスキップして、このテキストを直接再生！
                                 voiceManager.speakAndStream(text: debugSpeechText)
                             }) {
                                 HStack(spacing: 4) {
@@ -275,16 +277,15 @@ struct ContentView: View {
                                 .padding(.vertical, 8)
                                 .background(debugSpeechText.isEmpty ? Color.gray : Color.blue)
                                 .cornerRadius(8)
-                        }
-                        // 再生中や録音中、または文字が空の時はボタンを押せなくする
-                        .disabled(voiceManager.isSpeaking || voiceManager.isRecording || debugSpeechText.isEmpty)
+                            }
+                            .disabled(voiceManager.isSpeaking || voiceManager.isRecording || debugSpeechText.isEmpty)
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
                     .background(Color(.systemGray6))
                     .cornerRadius(12)
-                    .padding(.horizontal, 15) // 画面全体の左右マージンに合わせる
+                    .padding(.horizontal, 15)
                 }
                 
                 Spacer()
@@ -311,7 +312,7 @@ struct ContentView: View {
                 }
             }
             .sheet(isPresented: $isShowingSettings) {
-                SettingsView(isPremiumAI: $isPremiumAI, apiKey: $apiKey,voiceManager: voiceManager)
+                SettingsView(isPremiumAI: $isPremiumAI, apiKey: $apiKey, voiceManager: voiceManager)
             }
             .onAppear {
                 voiceManager.setup(bleManager: bleManager)
@@ -320,22 +321,21 @@ struct ContentView: View {
                 // 🌟 音声認識が完了した時の対話パイプラインの挙動
                 voiceManager.onSpeechRecognized = { text in
                     if !isPremiumAI {
-                        // 🌟 重いAI推論はグローバル（バックグラウンド）キューで実行
-                        DispatchQueue.global(qos: .userInitiated).async {
-                            // ※もし GemmaAIManager.shared があればそちらを推奨します
-                            let gemma = GemmaAIManager()
-                            gemma.generateLocalResponse(prompt: text) { reply in
-                                // 🌟 UIの更新とBLE送信トリガーは必ずメインスレッドに戻す
-                                DispatchQueue.main.async {
-                                    voiceManager.speakAndStream(text: reply)
-                                }
+                        // 🟩 修正：常駐している「gemmaManager」を直接使用。
+                        // ボタンを押すたびにロードしないため、レスポンスが爆速になります。
+                        self.gemmaManager.generateLocalResponse(prompt: text) { reply in
+                            DispatchQueue.main.async {
+                                // チャットUIの文字表示を更新
+                                self.voiceManager.aiResponseText = reply
+                                // 音声を再生・BLEストリーミングに流す
+                                self.voiceManager.speakAndStream(text: reply)
                             }
                         }
                     } else {
-                        // 有料版（クラウド）の模擬処理
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             let cloudReply = "「\(text)」ですね。クラウドでお返事しています。"
-                            voiceManager.speakAndStream(text: cloudReply)
+                            self.voiceManager.aiResponseText = cloudReply
+                            self.voiceManager.speakAndStream(text: cloudReply)
                         }
                     }
                 }
@@ -343,4 +343,3 @@ struct ContentView: View {
         }
     }
 }
-
