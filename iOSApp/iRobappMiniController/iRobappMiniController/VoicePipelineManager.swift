@@ -28,7 +28,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
     
     //  設定画面UIから操作するためのコントロール用変数群
     @Published var isStereoMode: Bool = true       // ステレオ切り替え
-    @Published var volumeMultiplier: Double = 32767.0 // ボリューム（最大60000程度。デフォルトは標準値）
+    @Published var volumeMultiplier: Double = 30000.0 // ボリューム（最大60000程度。デフォルトは標準値）
     @Published var pitchRate: Float = 1.0          // 音のピッチ倍率（0.5 〜 2.0）
     @Published var selectedVoiceIdentifier: String = "" // 選択された声の識別コード
     @Published var aiMode: String = "ノーマル"       // AIのキャラクターモード
@@ -157,7 +157,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
         
         // 設定画面から指定されたピッチ倍率（0.5〜2.0）をセット
         utterance.pitchMultiplier = pitchRate
-        utterance.rate = 0.5
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate  // 標準速度に
         
         //  1. コールバック内では遅延を入れず、バッファを貯めるだけにする
         synthesizer.write(utterance) { [weak self] (buffer: AVAudioBuffer) in
@@ -203,16 +203,33 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
                 let idx = Int(sourceIndex)
                 if idx >= frameCount { break }
                 
+//＜パターン１
+//                // 線形補間で高品質化
+//                let frac = sourceIndex - Double(idx)
+//                let nextIdx = min(idx + 1, frameCount - 1)
+//                let sample1 = Double(channelData[idx])
+//                let sample2 = Double(channelData[nextIdx])
+//                let interpolated = sample1 + (sample2 - sample1) * frac
+//
+//                let volumeFactor = self.volumeMultiplier / 32767.0
+//                let rawSample = interpolated * volumeFactor * 32767.0
+//                let int16Sample = Int16(max(-32768, min(32767, rawSample)))
+//
+//                // ステレオ/モノラル処理...
+//                sourceIndex += step
+//パターン１＞
+//＜パターン２
+
                 let floatSample = channelData[idx]
-                
+
                 // 🛠️ 【音量 ＆ 音割れガード倍率】
                 // 画面スライダーから取得した変数を適用
                 let normalizedSample = Double(floatSample)  // -1.0 ～ 1.0 の範囲
                 let volumeFactor = min(self.volumeMultiplier / 32767.0, 2.0)  // 最大2.0倍に制限
                 let rawSample = normalizedSample * volumeFactor * 32767.0
-                
+
                 let int16Sample = Int16(max(-32768, min(32767, rawSample)))
-                
+
                 // 【モノラル / ステレオ切り替え機能の反映】
                 if self.isStereoMode {
                     // ステレオモード：LとRのチャンネルへ交互に同じデータを連続して2個詰める
@@ -223,6 +240,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
                     int16Samples.append(int16Sample) // モノラル
                 }
                 sourceIndex += step
+//パターン２＞
             }
             
             // リトルエンディアンでバイナリ化
