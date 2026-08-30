@@ -207,9 +207,10 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
                 
                 // 🛠️ 【音量 ＆ 音割れガード倍率】
                 // 画面スライダーから取得した変数を適用
-                let boostFactor = self.volumeMultiplier / 32767.0
-                let rawSample = Double(floatSample) * self.volumeMultiplier * max(1.0, boostFactor)
-
+                let normalizedSample = Double(floatSample)  // -1.0 ～ 1.0 の範囲
+                let volumeFactor = min(self.volumeMultiplier / 32767.0, 2.0)  // 最大2.0倍に制限
+                let rawSample = normalizedSample * volumeFactor * 32767.0
+                
                 let int16Sample = Int16(max(-32768, min(32767, rawSample)))
                 
                 // 【モノラル / ステレオ切り替え機能の反映】
