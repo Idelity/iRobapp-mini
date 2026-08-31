@@ -35,10 +35,10 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
     @Published var availableVoices: [AVSpeechSynthesisVoice] = [] // iPhoneが持っている日本語音声リスト
     @Published var bleIntervalLevel: Int = 2
     @Published var targetRMS: Double = 0.18
-    @Published var maxGain: Double = 8.0
+    @Published var maxGain: Double = 18.0
     @Published var limiterScale: Double = 2.0  // 今は2.0で効果ありとのこと
     private var previousGain: Double = 1.0     // 平滑化用
-    private let smoothingAlpha: Double = 0.15  // 0.0..1.0 (小さいほどゆっくり)
+    private let smoothingAlpha: Double = 0.1  // 0.0..1.0 (小さいほどゆっくり)
     
     var onSpeechRecognized: ((String) -> Void)?
     
