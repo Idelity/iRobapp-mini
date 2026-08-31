@@ -76,7 +76,7 @@ class GemmaAIManager: ObservableObject {
         
         DispatchQueue.main.async { self.isThinking = true }
         
-        let formattedPrompt = wrapPrompt(prompt)
+        let formattedPrompt = "システム: あなたは日本語で答えてください。出力は必ず日本語の自然文のみでお願いします。\nユーザー: \(prompt)\nシステム: "
         
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
