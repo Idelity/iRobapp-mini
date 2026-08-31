@@ -27,13 +27,18 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
     @Published var isSpeaking: Bool = false
     
     //  設定画面UIから操作するためのコントロール用変数群
-    @Published var isStereoMode: Bool = true       // ステレオ切り替え
-    @Published var volumeMultiplier: Double = 30000.0 // ボリューム（最大60000程度。デフォルトは標準値）
+    @Published var isStereoMode: Bool = false       // ステレオ切り替え
+    @Published var volumeMultiplier: Double = 40000.0 // ボリューム（最大60000程度。デフォルトは標準値）
     @Published var pitchRate: Float = 1.0          // 音のピッチ倍率（0.5 〜 2.0）
     @Published var selectedVoiceIdentifier: String = "" // 選択された声の識別コード
     @Published var aiMode: String = "ノーマル"       // AIのキャラクターモード
     @Published var availableVoices: [AVSpeechSynthesisVoice] = [] // iPhoneが持っている日本語音声リスト
     @Published var bleIntervalLevel: Int = 2
+    @Published var targetRMS: Double = 0.18
+    @Published var maxGain: Double = 8.0
+    @Published var limiterScale: Double = 2.0  // 今は2.0で効果ありとのこと
+    private var previousGain: Double = 1.0     // 平滑化用
+    private let smoothingAlpha: Double = 0.15  // 0.0..1.0 (小さいほどゆっくり)
     
     var onSpeechRecognized: ((String) -> Void)?
     
@@ -175,81 +180,86 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
             self?.isSpeaking = false
         }
     }
-    
-    private func processAndSendBuffers() {
+    private func buildAudioData(from buffers: [AVAudioPCMBuffer], targetSampleRate: Double = 16000.0) -> Data {
         var allConvertedData = Data()
-            
-        for pcmBuffer in tempAudioBuffers {
+        let eps = 1e-12
+
+        for pcmBuffer in buffers {
             guard let floatChannels = pcmBuffer.floatChannelData else { continue }
             let frameCount = Int(pcmBuffer.frameLength)
-            
-            // 明確に0番目のモノラルchポインタを抽出
+            if frameCount == 0 { continue }
             let channelData = floatChannels[0]
-
-            // iOSが内部生成した元のサンプリングレート（22050Hz等）を取得
             let sourceSampleRate = pcmBuffer.format.sampleRate
-            let targetSampleRate: Double = 16000.0
-            
-            var int16Samples = [Int16]()
-            // 変換後の予測サイズで領域をあらかじめ確保（ステレオの場合は最大2倍になるため領域を広く取る）
-            let capacityMultiplier = isStereoMode ? 2 : 1
-            int16Samples.reserveCapacity(Int(Double(frameCount) * (targetSampleRate / sourceSampleRate)) * capacityMultiplier)
-            
+
+            // --- RMS / Peak 計測（入力）
+            var sumSquares: Double = 0.0
+            var peak: Float = 0.0
+            for i in 0..<frameCount {
+                let v = channelData[i]
+                sumSquares += Double(v * v)
+                peak = max(peak, abs(v))
+            }
+            let rms = sqrt(sumSquares / Double(max(1, frameCount)))
+            print("🔍 pcmBuffer frames=\(frameCount) sourceSR=\(sourceSampleRate) rms=\(rms) peak=\(peak)")
+
+            // --- ゲイン計算（RMSベース）
+            let target = max(0.01, targetRMS)   // 下限を保証
+            let currentRMS = max(rms, eps)
+            var gain = target / currentRMS
+            gain = min(gain, maxGain)
+
+            // --- 平滑化（前バッファとの遷移を滑らかに）
+            let smoothedGain = previousGain * (1.0 - smoothingAlpha) + gain * smoothingAlpha
+            previousGain = smoothedGain
+
+            // --- リサンプリング（線形補間）
             let step = sourceSampleRate / targetSampleRate
             var sourceIndex = 0.0
-            
-            // 1chのデータを安全に16kHzへ直撃ダウンサンプリング
+            var int16Samples = [Int16]()
+            int16Samples.reserveCapacity(Int(Double(frameCount) * (targetSampleRate / sourceSampleRate)) * (isStereoMode ? 2 : 1))
+
             while sourceIndex < Double(frameCount) {
                 let idx = Int(sourceIndex)
                 if idx >= frameCount { break }
-                
-//＜パターン１
-//                // 線形補間で高品質化
-//                let frac = sourceIndex - Double(idx)
-//                let nextIdx = min(idx + 1, frameCount - 1)
-//                let sample1 = Double(channelData[idx])
-//                let sample2 = Double(channelData[nextIdx])
-//                let interpolated = sample1 + (sample2 - sample1) * frac
-//
-//                let volumeFactor = self.volumeMultiplier / 32767.0
-//                let rawSample = interpolated * volumeFactor * 32767.0
-//                let int16Sample = Int16(max(-32768, min(32767, rawSample)))
-//
-//                // ステレオ/モノラル処理...
-//                sourceIndex += step
-//パターン１＞
-//＜パターン２
+                let frac = sourceIndex - Double(idx)
+                let nextIdx = min(idx + 1, frameCount - 1)
+                let s1 = Double(channelData[idx])
+                let s2 = Double(channelData[nextIdx])
+                var sample = s1 + (s2 - s1) * frac
 
-                let floatSample = channelData[idx]
+                // ゲイン適用
+                sample *= smoothedGain
 
-                // 🛠️ 【音量 ＆ 音割れガード倍率】
-                // 画面スライダーから取得した変数を適用
-                let normalizedSample = Double(floatSample)  // -1.0 ～ 1.0 の範囲
-                let volumeFactor = min(self.volumeMultiplier / 32767.0, 2.0)  // 最大2.0倍に制限
-                let rawSample = normalizedSample * volumeFactor * 32767.0
+                // ソフトリミッタ（tanh）
+                sample = tanh(sample * limiterScale)
 
-                let int16Sample = Int16(max(-32768, min(32767, rawSample)))
+                // 16bitスケール化
+                let int16Val = Int16(max(-32768, min(32767, Int(round(sample * 32767.0)))))
 
-                // 【モノラル / ステレオ切り替え機能の反映】
-                if self.isStereoMode {
-                    // ステレオモード：LとRのチャンネルへ交互に同じデータを連続して2個詰める
-                    int16Samples.append(int16Sample) // L
-                    int16Samples.append(int16Sample) // R
+                if isStereoMode {
+                    int16Samples.append(int16Val)
+                    int16Samples.append(int16Val)
                 } else {
-                    // モノラルモード：元の通り1個だけ詰める
-                    int16Samples.append(int16Sample) // モノラル
+                    int16Samples.append(int16Val)
                 }
                 sourceIndex += step
-//パターン２＞
             }
-            
-            // リトルエンディアンでバイナリ化
+
+            // --- バイナリ化（リトルエンディアン）
             for sample in int16Samples {
                 var leSample = sample.littleEndian
                 withUnsafeBytes(of: &leSample) { allConvertedData.append(contentsOf: $0) }
             }
         }
-            
+
+        // ログ（出力全体のサイズ）
+        print("🔧 buildAudioData -> totalBytes=\(allConvertedData.count)")
+        return allConvertedData
+    }
+    
+    private func processAndSendBuffers() {
+        let allConvertedData = buildAudioData(from: tempAudioBuffers, targetSampleRate: 16000.0)
+
         if allConvertedData.isEmpty {
             print("❌ 音声データが構築されませんでした")
             DispatchQueue.main.async { [weak self] in
@@ -273,16 +283,11 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
                 
             offset += chunkSize
             
-            // OS（iPhone）のBluetooth通信の仕様上、これらのウエイト値は
-            //「1250マイクロ秒（1.25ms）」の倍数に設定する
-            // ステレオ時はデータが2倍なので、モノラルのウエイトを半分にして超高速で送り込む。
             let baseInterval = self.bleIntervalLevel * 1250
             
             if self.isStereoMode {
-                // ステレオの場合：設定値 ✕ 1250
                 usleep(useconds_t(baseInterval))
             } else {
-                // モノラルの場合：（設定値 ✕ 1250）✕ 2
                 usleep(useconds_t(baseInterval * 2))
             }
         }
