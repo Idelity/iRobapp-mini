@@ -173,7 +173,7 @@ struct ContentView: View {
     @StateObject private var bleManager = BLEManager()
     @StateObject private var voiceManager = VoicePipelineManager()
     
-    // 🟩 修復：GemmaAIManagerを画面の最上部で常駐管理（起動時に1回だけロードされる）
+    // GemmaAIManagerを画面の最上部で常駐管理（起動時に1回だけロードされる）
     @StateObject private var gemmaManager = GemmaAIManager()
     
     @State private var isPremiumAI: Bool = false
@@ -192,7 +192,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(bleManager.connectedDeviceName).font(.subheadline).fontWeight(.bold)
                         
-                        // 🟩 修正：BLEの接続状態に加えて、Gemmaのロード状態もリアルタイムに表示
+                        // BLEの接続状態に加えて、Gemmaのロード状態もリアルタイムに表示
                         if gemmaManager.isModelLoading {
                             Text("🧠 ローカルAIの脳みそをロード中...").font(.caption).foregroundColor(.orange)
                         } else {
@@ -333,13 +333,16 @@ struct ContentView: View {
             .onAppear {
                 voiceManager.setup(bleManager: bleManager)
                 bleManager.startScanning()
-                
+
                 // 🌟 音声認識が完了した時の対話パイプラインの挙動
                 voiceManager.onSpeechRecognized = { text in
                     if !isPremiumAI {
-                        // 🟩 修正：常駐している「gemmaManager」を直接使用。
+                        // 常駐している「gemmaManager」を直接使用。
                         // ボタンを押すたびにロードしないため、レスポンスが爆速になります。
+                        // 方法B：単発で十分な場合（いちいちセッションを作りたくない）
                         self.gemmaManager.generateLocalResponse(prompt: text) { reply in
+                        // 方法A：Session を使った会話履歴付き
+                        //self.gemmaManager.generateResponseWithSession(prompt: text) { reply in
                             DispatchQueue.main.async {
                                 // チャットUIの文字表示を更新
                                 self.voiceManager.aiResponseText = reply

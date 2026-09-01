@@ -12,7 +12,8 @@ class GemmaAIManager: ObservableObject {
     @Published var isThinking: Bool = false
     
     private var llmInference: MediaPipeTasksGenAI.LlmInference?
-    
+    private var currentSession: MediaPipeTasksGenAI.LlmInference.Session?  // セッション保持
+
     private var localModelPath: String? {
         return Bundle.main.path(forResource: "gemma-2b-it-gpu-int4", ofType: "bin")
     }
@@ -48,6 +49,13 @@ class GemmaAIManager: ObservableObject {
             do {
                 self.llmInference = try MediaPipeTasksGenAI.LlmInference(options: options)
                 print("🟩 Gemma 2B モデルの初期化に成功しました！")
+                do {
+                    try self.startNewSession()
+                    print("🟩 初期チャットセッションの作成に成功しました。")
+                } catch {
+                    print("⚠️ 初期セッション作成失敗: \(error)")
+                }
+
                 DispatchQueue.main.async {
                     self.isModelLoading = false
                 }
@@ -69,11 +77,9 @@ class GemmaAIManager: ObservableObject {
         return formatter.string(from: Date())
     }
     
-    // 🟩 修正：AIが最もパニックを起こしにくい、超シンプルなチャット構造に変換
+    // AIが最もパニックを起こしにくい、超シンプルなチャット構造に変換
     private func wrapPrompt(_ rawPrompt: String) -> String {
         let currentDateTime = getCurrentDateTimeString()
-//        return "ユーザー: \(rawPrompt)\nシステム: "
-//        return "システム: あなたは日本語で答えてください。出力は必ず日本語の自然文のみでお願いします。\nユーザー: \(rawPrompt)\nアシスタント: "
         return """
         <start_of_turn>user
         前提条件：あたなの名前は\(robotName)です。一人称は\(firstPerson)です。日時：\(currentDateTime)
@@ -83,9 +89,7 @@ class GemmaAIManager: ObservableObject {
         
         """
     }
-    
-    // 🟩 修正：届いたテキストからシステム記号を跡形もなく消し去る強力クリーナー
-/*
+
      private func cleanText(_ rawText: String) -> String {
         return rawText
             .replacingOccurrences(of: "<bos>", with: "")
@@ -96,23 +100,8 @@ class GemmaAIManager: ObservableObject {
             .replacingOccurrences(of: "user", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
-*/
-    private func cleanText(_ rawText: String) -> String {
-        var cleaned = rawText
-            .replacingOccurrences(of: "<bos>", with: "")
-            .replacingOccurrences(of: "<eos>", with: "")
-            .replacingOccurrences(of: "<start_of_turn>", with: "")
-            .replacingOccurrences(of: "<end_of_turn>", with: "")
-            .replacingOccurrences(of: "model\n", with: "")
-            .replacingOccurrences(of: "user\n", with: "")
-        
-        // 稀に「アシスタント: おはよう！」のようにプレフィックスが残る場合の対策
-        if cleaned.hasPrefix("model") { cleaned.removeFirst(5) }
-        if cleaned.hasPrefix("assistant") { cleaned.removeFirst(9) }
-        
-        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-    // 🧠 ① 一括で答えを受け取る関数（View側が135行目付近の.onAppear内で呼んでいるメイン関数）
+
+    // 単発で十分な場合（いちいちセッションを作りたくない）
     func generateLocalResponse(prompt: String, completion: @escaping (String) -> Void) {
         guard let inference = llmInference else {
             completion("エラー：モデルが準備できていません。")
@@ -120,16 +109,6 @@ class GemmaAIManager: ObservableObject {
         }
         
         DispatchQueue.main.async { self.isThinking = true }
-        
-        //let formattedPrompt = "ユーザー: \(prompt)\nアシスタント: "
-        //let formattedPrompt = "user\n日本語で答えてください。\n\(prompt)\nmodel\n"
-        //let formattedPrompt = "user\nRespond in Japanese only.\n\(prompt)\nmodel\n"
-        //let formattedPrompt = "user\nあなたは日本語のアシスタントです。以下の質問に日本語で答えてください。\n\(prompt)\nmodel\n"
-        // 長ったらしい英文が出力されるだけだったパターン
-        //let formattedPrompt = "user\n\(prompt)\nmodel\n"
-        //いい感じだけど、英文で返却される。
-        //let formattedPrompt = "<start_of_turn>user\n\(prompt)<end_of_turn>\n<start_of_turn>model\n"
-        //let formattedPrompt = "<start_of_turn>user\n\(prompt)に対して日本語で答えてください。中国語は混ぜないでください。<end_of_turn>\n<start_of_turn>model\n"
         let formattedPrompt = wrapPrompt(prompt)
         
         print("DEBUG: formattedPrompt=\(formattedPrompt)")
@@ -164,6 +143,68 @@ class GemmaAIManager: ObservableObject {
     // 🧠 ③ ストリーミング関数（引数3つバージョンも同名で用意し、135行目のエラーを完全消滅させます）
     func generateLocalResponseStream(prompt: String, onChunk: @escaping (String) -> Void, completion: @escaping (String) -> Void) {
         generateLocalResponse(prompt: prompt, completion: completion)
+    }
+    // 新しいセッションを開始（会話をリセット）
+    func startNewSession() throws {
+        guard let inference = llmInference else {
+            throw NSError(domain: "GemmaAI", code: -1, userInfo: [NSLocalizedDescriptionKey: "モデルが準備できていません"])
+        }
+        // デフォルトオプションで新規セッション
+        self.currentSession = try MediaPipeTasksGenAI.LlmInference.Session(llmInference: inference)
+        // wrapPrompt() で前提条件を作り、モデルの応答を追加
+        let systemPrompt = wrapPrompt("日本語わかりますか") + "\n私は日本語を理解します。"
+        try currentSession?.addQueryChunk(inputText: systemPrompt)
+        print("🆕 セッションに前提条件を設定しました")
+    }
+    
+    // Session を使った会話生成（履歴付き）
+    func generateResponseWithSession(prompt: String, completion: @escaping (String) -> Void) {
+        guard let session = currentSession else {
+            completion("エラー：セッションが準備できていません。startNewSession() を呼んでください。")
+            return
+        }
+        
+        DispatchQueue.main.async { self.isThinking = true }
+        
+        let formattedPrompt = wrapPromptForSession(prompt)
+        print("DEBUG: Session prompt=\(formattedPrompt)")
+        
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            do {
+                // ステップ1：クエリチャンク（ユーザー入力）を追加
+                try session.addQueryChunk(inputText: formattedPrompt)
+                
+                // ステップ2：生成
+                let realReply = try session.generateResponse()
+                let finalReply = self.cleanText(realReply)
+                let safeReply = finalReply.isEmpty ? "（首をかしげている）" : finalReply
+                
+                print("DEBUG: Session reply=\(finalReply)")
+                
+                DispatchQueue.main.async {
+                    self.isThinking = false
+                    completion(safeReply)
+                }
+            } catch {
+                print("❌ Session生成失敗: \(error)")
+                DispatchQueue.main.async {
+                    self.isThinking = false
+                    completion("エラーが発生しました。")
+                }
+            }
+        }
+    }
+    
+    // Session 用のプロンプト（履歴があるので、前提条件は最初だけでいい可能性がある）
+    private func wrapPromptForSession(_ rawPrompt: String) -> String {
+        // Session は履歴を持つので、シンプルに質問だけを送ってもOK
+        return """
+        <start_of_turn>user
+        \(rawPrompt)<end_of_turn>
+        <start_of_turn>model
+        
+        """
     }
 }
 
