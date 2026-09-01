@@ -20,10 +20,15 @@
 #define SERVICE_UUID            "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_EYE_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define CHARACTERISTIC_VOICE_UUID "d0d34192-3eb6-41fb-a15c-0e24177c34dd"
+// BLE標準のバッテリーUUID（16ビットUUIDを128ビット形式に拡張したもの）
+#define BATTERY_SERVICE_UUID        "0000180f-0000-1000-8000-00805f9b34fb"
+#define BATTERY_CHARACTERISTIC_UUID "00002a19-0000-1000-8000-00805f9b34fb"
 
 BLEServer* pServer = nullptr;
 BLECharacteristic* pEyeCharacteristic = nullptr;
 BLECharacteristic* pVoiceCharacteristic = nullptr;
+BLECharacteristic *pBatteryCharacteristic;
+unsigned long lastBatteryUpdateTime = 0;
 
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
@@ -100,6 +105,9 @@ volatile bool isAudioPlaying = false;
 volatile unsigned long lastAudioPacketTime = 0;
 unsigned long tailMotionStartTime = 0;
 bool isTailWaggingForVoice = false;
+
+unsigned long batteryStartTime = 0;
+uint8_t lastSentLevel = 100;
 
 // -------------------------------------------------------------------------
 // I2S オーディオ初期化
@@ -303,7 +311,49 @@ void drawEye() {
 
   canvas.pushSprite(0, 0); 
 }
+// -------------------------------------------------------------------------
+// USB（5V）が接続されているか（＝充電中か）を判定する関数
+// -------------------------------------------------------------------------
+extern "C" {
+bool usb_serial_jtag_is_connected(void);
+}
+bool isUsbConnected() {
+    // 1. チップの内蔵回路がUSBを検知しているか
+    if (usb_serial_jtag_is_connected()) {
+        return true;
+    }
+    
+    // 2. Arduinoの標準USBシリアルオブジェクトがアクティブか（PC接続時用）
+    if (Serial) { 
+        return true; 
+    }
+    
+    return false;
+}
 
+// -------------------------------------------------------------------------
+// 実際の電圧（アナログ値）を読み取ってパーセント（0-100）に変換する関数
+// -------------------------------------------------------------------------
+uint8_t getBatteryPercentage() {
+
+    // 💡 1. USBが繋がっている（充電中）なら、強制的に100%にする
+    if (isUsbConnected()) {
+        return 100; 
+    }
+
+    // ⚠️ お使いのロボット基板の回路に合わせてピン番号（例: GPIO 1）を変更してください
+    int analogValue = analogRead(1); 
+    
+    // 電圧リポバッテリーの場合の簡易計算例（3.3V〜4.2V付近を0-100%にマッピング）
+    // ※お使いの基板（M5Stackやオリジナル回路）の分圧比に合わせて調整が必要です
+    float voltage = (analogValue * 3.3 / 4095.0) * 2.0; // 2倍分圧回路の場合
+    
+    int percentage = (int)((voltage - 3.3) / (4.2 - 3.3) * 100.0);
+    if (percentage > 100) percentage = 100;
+    if (percentage < 0) percentage = 0;
+    
+    return (uint8_t)percentage;
+}
 
 // -------------------------------------------------------------------------
 // 起動セットアップ
@@ -372,26 +422,41 @@ void setup() {
   pServer->setCallbacks(new MyServerCallbacks());
 
   BLEService *pService = pServer->createService(SERVICE_UUID);
+  BLEService *pBatteryService = pServer->createService(BATTERY_SERVICE_UUID);
 
   pEyeCharacteristic = pService->createCharacteristic(
-                         CHARACTERISTIC_EYE_UUID,
-                         BLECharacteristic::PROPERTY_WRITE
-                       );
+    CHARACTERISTIC_EYE_UUID,
+    BLECharacteristic::PROPERTY_WRITE
+  );
   pEyeCharacteristic->setCallbacks(new EyeCallbacks());
 
   pVoiceCharacteristic = pService->createCharacteristic(
-                          CHARACTERISTIC_VOICE_UUID,
-                          BLECharacteristic::PROPERTY_WRITE    |
-                          BLECharacteristic::PROPERTY_WRITE_NR | 
-                          BLECharacteristic::PROPERTY_NOTIFY
-                        );
+    CHARACTERISTIC_VOICE_UUID,
+    BLECharacteristic::PROPERTY_WRITE    |
+    BLECharacteristic::PROPERTY_WRITE_NR | 
+    BLECharacteristic::PROPERTY_NOTIFY
+  );
   pVoiceCharacteristic->setCallbacks(new VoiceCallbacks());
   pVoiceCharacteristic->addDescriptor(new BLE2902());
 
   pService->start();
 
+  // バッテリー残量特性（読み取り & 通知可能）の作成
+  pBatteryCharacteristic = pBatteryService->createCharacteristic(
+    BATTERY_CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  // デフォルト値をセット
+  uint8_t initialLevel = getBatteryPercentage();
+  pBatteryCharacteristic->setValue(&initialLevel, 1);
+
+  // サービスを開始
+  pBatteryService->start();
+
+
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->addServiceUUID(BATTERY_SERVICE_UUID);
   pAdvertising->setScanResponse(true);
   BLEDevice::startAdvertising();
   
@@ -404,6 +469,17 @@ void setup() {
 // メインループ
 // -------------------------------------------------------------------------
 void loop() {
+    // 4. 30秒ごとにバッテリー残量を更新してiPhoneに通知する
+    if (millis() - lastBatteryUpdateTime > 30000) {
+        lastBatteryUpdateTime = millis();
+        
+        uint8_t currentLevel = getBatteryPercentage();
+        pBatteryCharacteristic->setValue(&currentLevel, 1);
+        pBatteryCharacteristic->notify(); // iPhoneへ通知を送る
+        
+        Serial.printf("🔋 バッテリー残量を通知しました: %d%%\n", currentLevel);
+    }
+
   if (!deviceConnected && oldDeviceConnected) {
       delay(500);
       pServer->startAdvertising();

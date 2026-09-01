@@ -184,7 +184,20 @@ struct ContentView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 15) {
-                // 📊 接続ステータス表示エリア
+                // 📊 バッテリー残量表示エリア
+                HStack(spacing: 6) {
+                    // 残量に応じてアイコンの見た目と色を動的に変える
+                    Image(systemName: bleManager.batteryLevel > 20 ? "battery.100" : "battery.25")
+                        .foregroundColor(bleManager.batteryLevel > 20 ? .green : .red)
+                    
+                    Text("\(bleManager.batteryLevel)%")
+                        .font(.system(.subheadline, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 10)
+                .background(Color(.systemGray6))
+                .cornerRadius(8)                // 📊 接続ステータス表示エリア
                 HStack(spacing: 12) {
                     Circle()
                         .fill(bleManager.isConnected ? Color.green : Color.red)
