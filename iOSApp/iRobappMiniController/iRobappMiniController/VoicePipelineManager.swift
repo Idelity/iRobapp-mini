@@ -166,14 +166,42 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
         
         //  1. コールバック内では遅延を入れず、バッファを貯めるだけにする
         synthesizer.write(utterance) { [weak self] (buffer: AVAudioBuffer) in
-            guard let self = self, let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
-            self.tempAudioBuffers.append(pcmBuffer)
+            guard let self = self else { return }
+            guard let pcmBuffer = buffer as? AVAudioPCMBuffer else { return }
+
+            // フレームが 0 のバッファはログだけ出してスキップ（終端マーカー的なケースもある）
+            let frameCount = Int(pcmBuffer.frameLength)
+            if frameCount == 0 {
+                print("DEBUG_TTS_WRITE: received buffer frames=0 sr=\(pcmBuffer.format.sampleRate)")
+                return
+            }
+
+            // 安全な深いコピーを作る
+            guard let copied = AVAudioPCMBuffer(pcmFormat: pcmBuffer.format, frameCapacity: pcmBuffer.frameCapacity) else { return }
+            copied.frameLength = pcmBuffer.frameLength
+
+            let channelCount = Int(pcmBuffer.format.channelCount)
+            let bytesPerFrame = MemoryLayout<Float>.size
+            if let src = pcmBuffer.floatChannelData, let dst = copied.floatChannelData {
+                for ch in 0..<channelCount {
+                    // バイト数: frameCount * sizeof(Float)
+                    let byteCount = frameCount * bytesPerFrame
+                    memcpy(dst[ch], src[ch], byteCount)
+                }
+            }
+
+            // 追加ログ（任意）
+            print("DEBUG_TTS_WRITE: copied buffer frames=\(frameCount) sr=\(pcmBuffer.format.sampleRate) channels=\(channelCount)")
+
+            // 末尾に安全なコピーを追加
+            self.tempAudioBuffers.append(copied)
         }
     }
     
     // バッファ取得が完了したら送信処理を開始
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        print("🎤 TTS didFinish: totalBuffers=\(tempAudioBuffers.count) utterance.speechString=\(utterance.speechString)")
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.processAndSendBuffers()
         }
         DispatchQueue.main.async { [weak self] in
@@ -183,14 +211,14 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
     private func buildAudioData(from buffers: [AVAudioPCMBuffer], targetSampleRate: Double = 16000.0) -> Data {
         var allConvertedData = Data()
         let eps = 1e-12
-
+        
         for pcmBuffer in buffers {
             guard let floatChannels = pcmBuffer.floatChannelData else { continue }
             let frameCount = Int(pcmBuffer.frameLength)
             if frameCount == 0 { continue }
             let channelData = floatChannels[0]
             let sourceSampleRate = pcmBuffer.format.sampleRate
-
+            
             // --- RMS / Peak 計測（入力）
             var sumSquares: Double = 0.0
             var peak: Float = 0.0
@@ -201,23 +229,23 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
             }
             let rms = sqrt(sumSquares / Double(max(1, frameCount)))
             print("🔍 pcmBuffer frames=\(frameCount) sourceSR=\(sourceSampleRate) rms=\(rms) peak=\(peak)")
-
+            
             // --- ゲイン計算（RMSベース）
             let target = max(0.01, targetRMS)   // 下限を保証
             let currentRMS = max(rms, eps)
             var gain = target / currentRMS
             gain = min(gain, maxGain)
-
+            
             // --- 平滑化（前バッファとの遷移を滑らかに）
             let smoothedGain = previousGain * (1.0 - smoothingAlpha) + gain * smoothingAlpha
             previousGain = smoothedGain
-
+            
             // --- リサンプリング（線形補間）
             let step = sourceSampleRate / targetSampleRate
             var sourceIndex = 0.0
             var int16Samples = [Int16]()
             int16Samples.reserveCapacity(Int(Double(frameCount) * (targetSampleRate / sourceSampleRate)) * (isStereoMode ? 2 : 1))
-
+            
             while sourceIndex < Double(frameCount) {
                 let idx = Int(sourceIndex)
                 if idx >= frameCount { break }
@@ -226,16 +254,16 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
                 let s1 = Double(channelData[idx])
                 let s2 = Double(channelData[nextIdx])
                 var sample = s1 + (s2 - s1) * frac
-
+                
                 // ゲイン適用
                 sample *= smoothedGain
-
+                
                 // ソフトリミッタ（tanh）
                 sample = tanh(sample * limiterScale)
-
+                
                 // 16bitスケール化
                 let int16Val = Int16(max(-32768, min(32767, Int(round(sample * 32767.0)))))
-
+                
                 if isStereoMode {
                     int16Samples.append(int16Val)
                     int16Samples.append(int16Val)
@@ -244,14 +272,14 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
                 }
                 sourceIndex += step
             }
-
+            
             // --- バイナリ化（リトルエンディアン）
             for sample in int16Samples {
                 var leSample = sample.littleEndian
                 withUnsafeBytes(of: &leSample) { allConvertedData.append(contentsOf: $0) }
             }
         }
-
+        
         // ログ（出力全体のサイズ）
         print("🔧 buildAudioData -> totalBytes=\(allConvertedData.count)")
         return allConvertedData
@@ -259,7 +287,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
     
     private func processAndSendBuffers() {
         let allConvertedData = buildAudioData(from: tempAudioBuffers, targetSampleRate: 16000.0)
-
+        
         if allConvertedData.isEmpty {
             print("❌ 音声データが構築されませんでした")
             DispatchQueue.main.async { [weak self] in
@@ -267,12 +295,12 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
             }
             return
         }
-            
+        
         print("🚀 [送信開始] 総バイナリサイズ: \(allConvertedData.count) bytes。ESP32へストリーム投下します。")
-            
+        
         let totalLength = allConvertedData.count
         var offset = 0
-            
+        
         while offset < totalLength {
             let chunkSize = min(self.packetSize, totalLength - offset)
             let chunk = allConvertedData.subdata(in: offset..<(offset + chunkSize))
@@ -280,7 +308,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
             DispatchQueue.main.async { [weak self] in
                 self?.bleManager?.sendVoicePacket(audioData: chunk)
             }
-                
+            
             offset += chunkSize
             
             let baseInterval = self.bleIntervalLevel * 1250
@@ -291,10 +319,63 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
                 usleep(useconds_t(baseInterval * 2))
             }
         }
-            
+        
         print("✅ [ストリーミング送信完了]")
         DispatchQueue.main.async { [weak self] in
             self?.isSpeaking = false
         }
+    }
+    func testLocalTTS(text: String) {
+        // AVAudioSession を整える
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("❌ AVAudioSession error: \(error)")
+        }
+        
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "ja-JP")
+        utterance.pitchMultiplier = pitchRate
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        synthesizer.speak(utterance)
+    }
+    // buffers: 再生したい AVAudioPCMBuffer の配列（例: tempAudioBuffers を渡す）
+    func playBuffersLocally(_ buffers: [AVAudioPCMBuffer]) {
+        guard !buffers.isEmpty else { return }
+        
+        // 新しいエンジン＆プレイヤーノード（デバッグ用に毎回作る簡易実装）
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+        engine.attach(player)
+        let format = buffers[0].format
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+        
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+            try engine.start()
+        } catch {
+            print("❌ engine start error: \(error)")
+            return
+        }
+        
+        player.play()
+        for buf in buffers {
+            player.scheduleBuffer(buf, completionHandler: nil)
+        }
+        
+        // 再生を維持するために短い遅延（デバッグ：数秒で止める）
+        DispatchQueue.global().asyncAfter(deadline: .now() + 5.0) {
+            player.stop()
+            engine.stop()
+            do {
+                try AVAudioSession.sharedInstance().setActive(false)
+            } catch {}
+        }
+    }
+    // getTempBuffersForDebug
+    func getTempBuffersForDebug() -> [AVAudioPCMBuffer] {
+        return tempAudioBuffers
     }
 }

@@ -308,6 +308,39 @@ struct ContentView: View {
                                 .cornerRadius(8)
                             }
                             .disabled(voiceManager.isSpeaking || voiceManager.isRecording || debugSpeechText.isEmpty)
+                            Button(action: {
+                                voiceManager.testLocalTTS(text: debugSpeechText)
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "play.fill")
+                                    Text("LOL")
+                                }
+                                .font(.subheadline)
+                                .bold()
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(debugSpeechText.isEmpty ? Color.gray : Color.blue)
+                                .cornerRadius(8)
+                            }
+                            .disabled(voiceManager.isSpeaking || voiceManager.isRecording || debugSpeechText.isEmpty)
+                            Button(action: {
+                                let buffers = voiceManager.getTempBuffersForDebug()
+                                    voiceManager.playBuffersLocally(buffers)
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "play.fill")
+                                    Text("TMP")
+                                }
+                                .font(.subheadline)
+                                .bold()
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(debugSpeechText.isEmpty ? Color.gray : Color.blue)
+                                .cornerRadius(8)
+                            }
+                            .disabled(voiceManager.isSpeaking || voiceManager.isRecording || debugSpeechText.isEmpty)
                         }
                     }
                     .padding(.horizontal, 16)
