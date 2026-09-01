@@ -13,13 +13,29 @@ struct SettingsView: View {
     @Binding var apiKey: String
     @ObservedObject var voiceManager: VoicePipelineManager
     @Environment(\.dismiss) var dismiss
-    
+    @AppStorage("saved_robot_name") var robotName: String = "モカピー"
+    @AppStorage("saved_first_person") var firstPerson: String = "わたし"
+
     // AIモードの選択肢
     let aiModes = ["ノーマル", "ツンデレ", "ロボット風", "やさしい"]
 
     var body: some View {
         NavigationView {
             Form {
+                Section(header: Text("ロボットのプロフィール")) {
+                    HStack {
+                        Text("名前")
+                        Spacer()
+                        TextField("ロボットの名前", text: $robotName)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    HStack {
+                        Text("一人称")
+                        Spacer()
+                        TextField("ロボットの一人称", text: $firstPerson)
+                            .multilineTextAlignment(.trailing)
+                    }
+                }
                 Section(header: Text("AIエンジンの選択")) {
                     Toggle("有料版 (ChatGPT)", isOn: $isPremiumAI)
                 }

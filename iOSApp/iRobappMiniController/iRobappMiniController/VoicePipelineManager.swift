@@ -116,7 +116,7 @@ class VoicePipelineManager: NSObject, ObservableObject, SFSpeechRecognizerDelega
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
         recognitionRequest?.endAudio()
-        recognitionTask?.cancel()
+        //recognitionTask?.cancel()
         isRecording = false
     }
     
