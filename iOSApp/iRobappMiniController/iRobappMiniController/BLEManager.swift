@@ -113,52 +113,74 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         isConnected = false
         connectedDeviceName = "未接続"
+        batteryLevel = 0
         print(">>> 接続が切断されました。再スキャンを再開します。")
         startScanning()
     }
     
-    // MARK: - CBPeripheralDelegate
+    // peripheral(_:didDiscoverServices:)
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        if let error = error {
+            print("❌ サービス探索エラー: \(error)")
+            return
+        }
         guard let services = peripheral.services else { return }
+        print("DEBUG: discovered services = \(services.map { $0.uuid.uuidString })")
         for service in services {
-            if service.uuid == batteryServiceUUID {
-                // バッテリー特性を探索
-                peripheral.discoverCharacteristics([batteryCharacteristicUUID], for: service)
-            }
             if service.uuid == serviceUUID {
-                // 【修正】service ではなく peripheral.discoverCharacteristics を呼び出す
                 peripheral.discoverCharacteristics([eyeCharacteristicUUID, voiceCharacteristicUUID], for: service)
+            } else if service.uuid == batteryServiceUUID {
+                peripheral.discoverCharacteristics([batteryCharacteristicUUID], for: service)
             }
         }
     }
     
+    // peripheral(_:didDiscoverCharacteristicsFor:)
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        if let error = error {
+            print("❌ キャラクタリスティクス探索エラー: \(error)")
+            return
+        }
         guard let characteristics = service.characteristics else { return }
+        print("DEBUG: discovered characteristics for service \(service.uuid.uuidString) = \(characteristics.map { $0.uuid.uuidString })")
         for char in characteristics {
-            if char.uuid == batteryCharacteristicUUID {
-                // 2. 定期的に残量変化を受け取る（NotifyをONにする）
-                peripheral.setNotifyValue(true, for: char)
-                // 3. 初回の残量を手動で1回読みに行く
-                peripheral.readValue(for: char)
-            }
             if char.uuid == eyeCharacteristicUUID {
                 eyeCharacteristic = char
+                print("🔎 eyeCharacteristic found")
             } else if char.uuid == voiceCharacteristicUUID {
                 voiceCharacteristic = char
+                print("🔎 voiceCharacteristic found")
+            } else if char.uuid == batteryCharacteristicUUID {
+                print("🔎 バッテリーキャラクタリスティクスを発見しました")
+                // 初回読み取りで即時値を取得
+                peripheral.readValue(for: char)
+                // if notify supported, subscribe
+                if char.properties.contains(.notify) {
+                    peripheral.setNotifyValue(true, for: char)
+                }
             }
         }
         print(">>> キャラクタリスティクスの紐付けが完了しました。")
     }
 
+    // peripheral(_:didUpdateValueFor:)
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            print("❌ characteristic update error: \(error)")
+            return
+        }
+        
         if characteristic.uuid == batteryCharacteristicUUID {
             if let data = characteristic.value, let firstByte = data.first {
+                let level = Int(firstByte) // 0..100
                 DispatchQueue.main.async {
-                    // 1バイトのデータ（0x00〜0x64 = 0〜100%）をIntに変換して格納
-                    self.batteryLevel = Int(firstByte)
+                    self.batteryLevel = level
                     print("🔋 ロボットのバッテリー残量更新: \(self.batteryLevel)%")
                 }
+            } else {
+                print("⚠️ バッテリーデータが空でした")
             }
+            return
         }
     }
 }
