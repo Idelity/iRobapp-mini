@@ -74,7 +74,9 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     }
 
     func sendVoicePacket(audioData: Data) {
-        guard let peripheral = connectedPeripheral, let char = voiceCharacteristic else { return }
+        guard let peripheral = connectedPeripheral, let char = voiceCharacteristic else {
+            print(">>> sendVoicePacket: peripheral or characteristic missing")
+            return }
         peripheral.writeValue(audioData, for: char, type: .withoutResponse)
     }
     
