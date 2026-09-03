@@ -32,3 +32,10 @@ iRobapp-mini/
 
 - 🌍 English Concept Guide  
   https://github.com/Idelity/iRobapp/blob/main/docs/iRobapp-concept-en.md
+
+
+
+> [!💡 お知らせ / Notice]
+> 本家プロジェクト **[iRobapp](https://github.com/Idelity/iRobapp)** は、こちらを参照してください。
+> 並行稼働プロジェクト **[Mocapy（モカピー）](https://github.com/Idelity/Mocapy)** は、こちらを参照してください。
+> 
