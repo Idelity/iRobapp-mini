@@ -14,11 +14,14 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     private let serviceUUID = CBUUID(string: "4fafc201-1fb5-459e-8fcc-c5c9c331914b")
     private let eyeCharacteristicUUID = CBUUID(string: "beb5483e-36e1-4688-b7f5-ea07361b26a8")
     private let voiceCharacteristicUUID = CBUUID(string: "d0d34192-3eb6-41fb-a15c-0e24177c34dd")
+    private let servoCharacteristicUUID = CBUUID(string: "e0a64192-3eb6-41fb-a15c-0e24177c34dd")
+    
     // BLE標準のバッテリー用UUID
     private let batteryServiceUUID = CBUUID(string: "180F")
     private let batteryCharacteristicUUID = CBUUID(string: "2A19")
 
     private var eyeCharacteristic: CBCharacteristic?
+    private var servoCharacteristic: CBCharacteristic?
     private var voiceCharacteristic: CBCharacteristic?
     
     @Published var discoveredPeripherals: [CBPeripheral] = []
@@ -70,6 +73,26 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
                 targetPeripheral.writeValue(data, for: char, type: CBCharacteristicWriteType.withResponse)
                 print("👁️ [BLE送信] 目の位置コマンド: \(commandString)")
             }
+        }
+    }
+
+    // サーボの基本動作コマンドを文字列としてロボットへ送信する
+    func sendServoCommand(action: String) {
+        // 接続状態と書き込み用キャラクタリスティックの存在チェック
+        guard isConnected, let char = servoCharacteristic else {
+            print("❌ ロボットが未接続、または書き込み用キャラクタリスティックが見つかりません。")
+            return
+        }
+        
+        // 末尾に改行コード「\n」を付与してData型（UTF-8）に変換
+        let commandString = action + "\n"
+        guard let data = commandString.data(using: .utf8) else { return }
+        
+        // クラス内で定義されている正しい変数（char.service?.peripheral）から引き出して確実に送信
+        if let targetPeripheral = char.service?.peripheral {
+            // ロボット側の受信・パース能力を考慮して、目のコントロールと同じく確実な withResponse を採用
+            targetPeripheral.writeValue(data, for: char, type: CBCharacteristicWriteType.withResponse)
+            print("📡 [BLE送信] サーボアクション: \(commandString.replacingOccurrences(of: "\n", with: "\\n"))")
         }
     }
 
@@ -130,7 +153,7 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         print("DEBUG: discovered services = \(services.map { $0.uuid.uuidString })")
         for service in services {
             if service.uuid == serviceUUID {
-                peripheral.discoverCharacteristics([eyeCharacteristicUUID, voiceCharacteristicUUID], for: service)
+                peripheral.discoverCharacteristics([eyeCharacteristicUUID, voiceCharacteristicUUID, servoCharacteristicUUID], for: service)
             } else if service.uuid == batteryServiceUUID {
                 peripheral.discoverCharacteristics([batteryCharacteristicUUID], for: service)
             }
@@ -152,6 +175,9 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
             } else if char.uuid == voiceCharacteristicUUID {
                 voiceCharacteristic = char
                 print("🔎 voiceCharacteristic found")
+            } else if char.uuid == servoCharacteristicUUID {
+                servoCharacteristic = char
+                print("🔎 servoCharacteristic found")
             } else if char.uuid == batteryCharacteristicUUID {
                 print("🔎 バッテリーキャラクタリスティクスを発見しました")
                 // 初回読み取りで即時値を取得

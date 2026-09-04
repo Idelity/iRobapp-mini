@@ -259,6 +259,7 @@ struct ContentView: View {
                 
                 // 👁️ 視線手動コントロール（上下左右・十字フル対応版）
                 if bleManager.isConnected {
+                    
                     VStack(spacing: 8) {
                         Button("上を向く") {
                             bleManager.sendEyePosition(xValue: 120, yValue: 60)
@@ -282,7 +283,60 @@ struct ContentView: View {
                             bleManager.sendEyePosition(xValue: 120, yValue: 180)
                         }.buttonStyle(.bordered)
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 4)
+                    
+                    Divider().padding(.horizontal)
+                    
+                    // 🤖 サーボ基本動作
+                    VStack(spacing: 8) {
+                        Text("サーボ基本動作")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        
+                        HStack(spacing: 10) {
+                            Button(action: {
+                                bleManager.sendServoCommand(action: "look_left")
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.left.square")
+                                    Text("左を見る")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button(action: {
+                                bleManager.sendServoCommand(action: "look_front")
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "square")
+                                    Text("正面をみる")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            
+                            Button(action: {
+                                bleManager.sendServoCommand(action: "look_right")
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.right.square")
+                                    Text("右を見る")
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        
+                        Button(action: {
+                            bleManager.sendServoCommand(action: "wag_tail")
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "waveform.path")
+                                Text("尻尾を振る")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.orange)
+                    }
+                    .padding(.vertical, 4)
                 }
                 
                 if bleManager.isConnected {

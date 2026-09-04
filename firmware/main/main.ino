@@ -20,6 +20,7 @@
 #define SERVICE_UUID            "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_EYE_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define CHARACTERISTIC_VOICE_UUID "d0d34192-3eb6-41fb-a15c-0e24177c34dd"
+#define CHARACTERISTIC_SERVO_UUID "e0a64192-3eb6-41fb-a15c-0e24177c34dd"
 // BLE標準のバッテリーUUID（16ビットUUIDを128ビット形式に拡張したもの）
 #define BATTERY_SERVICE_UUID        "0000180f-0000-1000-8000-00805f9b34fb"
 #define BATTERY_CHARACTERISTIC_UUID "00002a19-0000-1000-8000-00805f9b34fb"
@@ -27,6 +28,7 @@
 BLEServer* pServer = nullptr;
 BLECharacteristic* pEyeCharacteristic = nullptr;
 BLECharacteristic* pVoiceCharacteristic = nullptr;
+BLECharacteristic* pServoCharacteristic = nullptr;
 BLECharacteristic *pBatteryCharacteristic;
 unsigned long lastBatteryUpdateTime = 0;
 
@@ -209,7 +211,6 @@ class EyeCallbacks: public BLECharacteristicCallbacks {
     }
 };
 
-
 // -------------------------------------------------------------------------
 // 音声ストリーミングデータ受信コールバック（ピュア直撃版）
 // -------------------------------------------------------------------------
@@ -240,6 +241,53 @@ class VoiceCallbacks: public BLECharacteristicCallbacks {
             if (!isTailWaggingForVoice) {
                 isTailWaggingForVoice = true;
                 tailMotionStartTime = millis();
+            }
+        }
+    }
+};
+
+// -------------------------------------------------------------------------
+// サーボ動作受信コールバック（ピュア直撃版）
+// -------------------------------------------------------------------------
+class ServoCallbacks: public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic *pCharacteristic) {
+        // アプリから届いたデータを取得
+        String command = pCharacteristic->getValue();
+
+        if (command.length() > 0) {
+            // String型に変換し、末尾の改行コード（\n）や空白を綺麗に除去
+            String command = pCharacteristic->getValue();
+            command.trim(); 
+
+            Serial.print("📡 受信したサーボコマンド: ");
+            Serial.println(command);
+
+            // 1. 「左を見る」コマンド
+            if (command == "look_left") {
+                servoPan.write(45); // 例：左向き45度（角度はロボットに合わせて調整してください）
+                Serial.println("👀 左を向きます");
+            }
+            // 2. 「正面をみる」コマンド
+            else if (command == "look_front") {
+                servoPan.write(90); // 例：正面90度
+                Serial.println("👀 正面を向きます");
+            }
+            // 3. 「右を見る」コマンド
+            else if (command == "look_right") {
+                servoPan.write(135); // 例：右向き135度
+                Serial.println("👀 右を向きます");
+            }
+            // 4. 「尻尾を振る」コマンド
+            else if (command == "wag_tail") {
+                Serial.println("🐕 尻尾を振ります！");
+                // 尻尾を3回左右にフリフリする即席ループ
+                for(int i = 0; i < 3; i++) {
+                    servoTail.write(60);  // left
+                    delay(200);
+                    servoTail.write(120); // right
+                    delay(200);
+                }
+                servoTail.write(90); // 最後に正面（定位置）に戻す
             }
         }
     }
@@ -437,6 +485,13 @@ void setup() {
     BLECharacteristic::PROPERTY_NOTIFY
   );
   pVoiceCharacteristic->setCallbacks(new VoiceCallbacks());
+
+  pServoCharacteristic = pService->createCharacteristic(
+    CHARACTERISTIC_SERVO_UUID,
+    BLECharacteristic::PROPERTY_WRITE
+  );
+  pServoCharacteristic->setCallbacks(new ServoCallbacks());
+
   pVoiceCharacteristic->addDescriptor(new BLE2902());
 
   pService->start();
