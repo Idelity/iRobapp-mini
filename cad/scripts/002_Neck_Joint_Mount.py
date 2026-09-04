@@ -2,7 +2,7 @@
 # File: 002_Neck_Joint_Mount.py
 # Description: iRobapp-mini用 首の上下左右(パン・チルト)関節マウント
 # Spec: L字型 / パーツ幅8.0mm固定 / 前面: サーボホーン溝 / 底面: 頭部結合用M2×2穴
-# Update: 底面のネジピッチを18.0mmに変更、ホーン形状の最適化
+# Update: 底面のネジピッチを28.0mmに変更、ネジ穴を後ろ側に2mm微調整（行き過ぎを修正）
 # =========================================================
 
 import FreeCAD as App
@@ -28,7 +28,8 @@ total_h = inner_h + wall_t # 全高30.0mm
 
 # 穴あけ用の規格パラメータ
 screw_r_m2       = 1.1   # M2ネジ用貫通穴（半径1.1mm）
-head_joint_pitch = 18.0  # 【ご要望】頭部部品と結合するネジ穴の間隔: 18.0mm
+head_joint_pitch = 28.0  # 【変更】頭部部品と結合するネジ穴の間隔: 28.0mm
+head_hole_offset = 2.0   # 【微調整】後ろ側へのずらす量を2.0mmに変更
 
 # --- SG90最小ホーン（前面用・クリアランス込み） ---
 horn_w       = 8.0       # パーツ幅8mmと同じ（幅いっぱいの溝になります）
@@ -53,12 +54,12 @@ cut_shapes.append(l_shape_void)
 # ---------------------------------------------------------
 # 2. 追加のくり抜き処理（底面：頭部結合2穴 ＆ 前面：サーボホーン溝・3穴）
 # ---------------------------------------------------------
-# --- (A) 底面（水平板）：頭部部品と結合するM2ネジ穴（2箇所、ピッチ18mm） ---
+# --- (A) 底面（水平板）：頭部部品と結合するM2ネジ穴（2箇所、ピッチ28mm、後方にオフセット） ---
 for dy in [-head_joint_pitch / 2.0, head_joint_pitch / 2.0]:
     head_hole = Part.makeCylinder(
         screw_r_m2,
         wall_t + 2.0,
-        App.Vector(0.0, dy, -1.0),
+        App.Vector(0.0, dy + head_hole_offset, -1.0), # 2.0mmのオフセットを適用
         App.Vector(0, 0, 1)
     )
     cut_shapes.append(head_hole)
