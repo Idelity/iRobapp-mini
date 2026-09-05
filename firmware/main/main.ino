@@ -110,6 +110,8 @@ bool isTailWaggingForVoice = false;
 
 unsigned long batteryStartTime = 0;
 uint8_t lastSentLevel = 100;
+int currentHeadAngle = 90;
+const int headSpeed = 15; 
 
 // -------------------------------------------------------------------------
 // I2S オーディオ初期化
@@ -167,6 +169,25 @@ void playSystemBootSound() {
   i2s_write(I2S_NUM_0, (const char*)sound_buffer, note_length * sizeof(int16_t), &bytes_written, portMAX_DELAY);
   i2s_zero_dma_buffer(I2S_NUM_0); 
 }
+
+// -------------------------------------------------------------------------
+// 指定した角度まで指定したスピードでゆっくり動かす関数
+// -------------------------------------------------------------------------
+void moveHeadSmoothly(int targetAngle, int speedDelay) {
+    if (currentHeadAngle < targetAngle) {
+        for (int angle = currentHeadAngle; angle <= targetAngle; angle++) {
+            servoPan.write(angle); 
+            delay(speedDelay);
+        }
+    } else {
+        for (int angle = currentHeadAngle; angle >= targetAngle; angle--) {
+            servoPan.write(angle); 
+            delay(speedDelay);
+        }
+    }
+    currentHeadAngle = targetAngle; // 現在の角度を安全に更新
+}
+
 // -------------------------------------------------------------------------
 // BLEサーバー接続状態コールバック
 // -------------------------------------------------------------------------
@@ -264,17 +285,17 @@ class ServoCallbacks: public BLECharacteristicCallbacks {
 
             // 1. 「左を見る」コマンド
             if (command == "look_left") {
-                servoPan.write(45); // 例：左向き45度（角度はロボットに合わせて調整してください）
+                moveHeadSmoothly(135, headSpeed); // 135度までゆっくり移動
                 Serial.println("👀 左を向きます");
             }
             // 2. 「正面をみる」コマンド
             else if (command == "look_front") {
-                servoPan.write(90); // 例：正面90度
+                moveHeadSmoothly(90, headSpeed); // 90度までゆっくり移動
                 Serial.println("👀 正面を向きます");
             }
             // 3. 「右を見る」コマンド
             else if (command == "look_right") {
-                servoPan.write(135); // 例：右向き135度
+                moveHeadSmoothly(45, headSpeed); // 45度までゆっくり移動
                 Serial.println("👀 右を向きます");
             }
             // 4. 「尻尾を振る」コマンド
@@ -389,6 +410,7 @@ uint8_t getBatteryPercentage() {
         return 100; 
     }
 
+/*
     // ⚠️ お使いのロボット基板の回路に合わせてピン番号（例: GPIO 1）を変更してください
     int analogValue = analogRead(1); 
     
@@ -399,7 +421,9 @@ uint8_t getBatteryPercentage() {
     int percentage = (int)((voltage - 3.3) / (4.2 - 3.3) * 100.0);
     if (percentage > 100) percentage = 100;
     if (percentage < 0) percentage = 0;
-    
+*/
+    // TODO:将来ピンを開けて（CSあたり）抵抗をつけられたら正式に上記の対応をする。
+    int percentage = 0;
     return (uint8_t)percentage;
 }
 
@@ -439,9 +463,9 @@ void setup() {
   Serial.println("🤖 起動セルフチェック開始：首と尻尾を動かします");
 
   // 1. 首を「右 ➔ 正面 ➔ 左 ➔ 正面」にシャキシャキ動かす
-  servoPan.write(60);   delay(300);  // 右を向く
+  servoPan.write(75);   delay(300);  // 右を向く
   servoPan.write(90);   delay(200);  // 正面に戻る
-  servoPan.write(120);  delay(300);  // 左を向く
+  servoPan.write(105);  delay(300);  // 左を向く
   servoPan.write(90);   delay(300);  // 正面に戻って静止
 
   // 2. 尻尾をお尻フリフリと「2回」振る
@@ -573,7 +597,8 @@ void loop() {
     }
   } 
   else if (!isSleepMode && random(0, 1000) < 3) {
-    servoPan.write(random(60, 120));
+    moveHeadSmoothly(random(60, 120), headSpeed);
+
     if(random(0, 2) == 0) {
       servoTail.write(110); 
       delay(80);
